@@ -1261,10 +1261,11 @@ func handleImportGOOD(w http.ResponseWriter, rawBody []byte, uid string) {
 
 	for _, c := range data.Characters {
 		name := c.Key // PascalCase key is the name in GOOD format
+		element := characterElements[c.Key]
 		icon := fmt.Sprintf("assets/chars/%s.png", strings.ToLower(c.Key))
 		rqliteExec([]string{fmt.Sprintf(
-			`INSERT INTO characters (name,element,weapon_type,level,weapon_name,hp,atk,crit_rate,crit_dmg,energy_recharge,elemental_mastery,icon,constellation,user_id) VALUES ('%s','','', %d,'',0,0,0,0,0,0,'%s',%d,%s)`,
-			esc(name), c.Level, esc(icon), c.Constellation, uid,
+			`INSERT INTO characters (name,element,weapon_type,level,weapon_name,hp,atk,crit_rate,crit_dmg,energy_recharge,elemental_mastery,icon,constellation,user_id) VALUES ('%s','%s','', %d,'',0,0,0,0,0,0,'%s',%d,%s)`,
+			esc(name), esc(element), c.Level, esc(icon), c.Constellation, uid,
 		)})
 		imported["characters"]++
 	}
@@ -1600,6 +1601,46 @@ var artifactSetKoreanNames = map[string]string{
 }
 
 // Maps character name → recommended artifact sets (GOOD format PascalCase keys)
+// characterElements maps GOOD PascalCase key → element (Korean)
+var characterElements = map[string]string{
+	// 불
+	"Amber": "불", "Xiangling": "불", "Bennett": "불", "Diluc": "불", "Klee": "불",
+	"Yanfei": "불", "HuTao": "불", "Yoimiya": "불", "Thoma": "불", "Dehya": "불",
+	"Lyney": "불", "Chevreuse": "불", "Gaming": "불", "Arlecchino": "불", "Mavuika": "불",
+	"Xinyan": "불",
+	// 물
+	"Barbara": "물", "Xingqiu": "물", "Mona": "물", "Tartaglia": "물", "Kokomi": "물",
+	"Ayato": "물", "Yelan": "물", "Candace": "물", "Nilou": "물", "Neuvillette": "물",
+	"Furina": "물", "Sigewinne": "물", "Mualani": "물",
+	// 번개
+	"Lisa": "번개", "Fischl": "번개", "Beidou": "번개", "Keqing": "번개",
+	"KujouSara": "번개", "RaidenShogun": "번개", "YaeMiko": "번개",
+	"KukiShinobu": "번개", "Dori": "번개", "Cyno": "번개", "Sethos": "번개",
+	"Clorinde": "번개", "Ororon": "번개", "Iansan": "번개", "Varesa": "번개", "Razor": "번개",
+	// 얼음
+	"Qiqi": "얼음", "Chongyun": "얼음", "Diona": "얼음", "Ganyu": "얼음", "Rosaria": "얼음",
+	"Shenhe": "얼음", "KamisatoAyaka": "얼음", "Aloy": "얼음", "Layla": "얼음",
+	"Mika": "얼음", "Freminet": "얼음", "Wriothesley": "얼음", "Charlotte": "얼음",
+	"Citlali": "얼음", "Kaeya": "얼음", "Eula": "얼음", "Skirk": "얼음",
+	// 바람
+	"Sucrose": "바람", "Jean": "바람", "Venti": "바람", "Xiao": "바람",
+	"KaedeharaKazuha": "바람", "Sayu": "바람", "ShikanoinHeizou": "바람",
+	"Faruzan": "바람", "Wanderer": "바람", "Lynette": "바람", "LanYan": "바람",
+	"Chasca": "바람", "Xianyun": "바람", "YumemizukiMizuki": "바람", "Durin": "바람",
+	// 바위
+	"Noelle": "바위", "Zhongli": "바위", "Albedo": "바위", "Gorou": "바위",
+	"AratakiItto": "바위", "Navia": "바위", "Chiori": "바위", "Ningguang": "바위",
+	"YunJin": "바위", "Kachina": "바위", "Xilonen": "바위", "Illuga": "바위", "Zibai": "바위",
+	// 풀
+	"Collei": "풀", "Tighnari": "풀", "Nahida": "풀", "Yaoyao": "풀",
+	"Alhaitham": "풀", "Kaveh": "풀", "Baizhu": "풀", "Kirara": "풀",
+	"Emilie": "풀", "Kinich": "풀",
+	// 6.0+ (달/Moonsign 등 신규 캐릭터)
+	"Nefer": "풀", "Lauma": "물", "Aino": "얼음", "Ineffa": "바람",
+	"Escoffier": "얼음", "Ifa": "풀", "Manekin": "바람", "Manekina": "바람",
+	"Columbina": "물", "Dahlia": "물",
+}
+
 var characterBestSets = map[string][]string{
 	// Pyro
 	"Amber": {"CrimsonWitchOfFlames", "WanderersTroupe"}, "Xiangling": {"EmblemOfSeveredFate"},
