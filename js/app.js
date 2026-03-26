@@ -910,34 +910,10 @@ async function initSmartDiscard() {
   const totalEl = document.getElementById('sd-total')
   const analyzedEl = document.getElementById('sd-analyzed')
   const candidatesEl = document.getElementById('sd-candidates')
+  const slider = document.getElementById('sd-threshold')
+  const sliderVal = document.getElementById('sd-threshold-val')
   if (!grid) return
 
-  let data
-  try {
-    data = await api.get('/artifacts/smart-discard')
-  } catch (e) {
-    loading.innerHTML = '<p style="color:var(--error)">분석 실패. 다시 시도해주세요.</p>'
-    return
-  }
-
-  const candidates = data.candidates || []
-
-  // Update summary
-  totalEl.textContent = data.total || 0
-  analyzedEl.textContent = data.analyzed || 0
-  candidatesEl.textContent = candidates.length
-
-  loading.style.display = 'none'
-
-  if (candidates.length === 0) {
-    empty.style.display = 'block'
-    return
-  }
-
-  grid.style.display = ''
-  grid.innerHTML = ''
-
-  const accents = ['error', 'error', 'error', 'error']
   const slotIcons = {
     flower: 'local_florist', plume: 'flight', sands: 'hourglass_empty',
     goblet: 'wine_bar', circlet: 'crown',
@@ -964,63 +940,110 @@ async function initSmartDiscard() {
     LongNightsOath: '긴 밤의 맹세', FinaleOfTheDeep: '깊은 회랑의 피날레',
   }
 
-  candidates.forEach((c) => {
-    const a = c.artifact
-    const subs = [
-      { name: a.sub1_name, value: a.sub1_value },
-      { name: a.sub2_name, value: a.sub2_value },
-      { name: a.sub3_name, value: a.sub3_value },
-      { name: a.sub4_name, value: a.sub4_value },
-    ].filter(s => s.name)
+  async function fetchAndRender(thresholdValue) {
+    loading.style.display = ''
+    grid.style.display = 'none'
+    empty.style.display = 'none'
 
-    const subsHTML = subs.map(s => `
-      <div class="substat">
-        <div class="substat__left">
-          <div class="substat__bar substat__bar--low"></div>
-          <span class="substat__name">${s.name}</span>
-        </div>
-        <div class="substat__right">
-          <span class="substat__value">${s.value}</span>
-        </div>
-      </div>`).join('')
+    let data
+    try {
+      data = await api.get(`/artifacts/smart-discard?threshold=${thresholdValue}`)
+    } catch (e) {
+      loading.innerHTML = '<p style="color:var(--error)">분석 실패. 다시 시도해주세요.</p>'
+      return
+    }
 
-    const reasonsHTML = c.reasons.map(r => `
-      <div class="sd-reason">
-        <span class="material-symbols-outlined" style="font-size:0.75rem">warning</span>
-        <span>${r}</span>
-      </div>`).join('')
+    const candidates = data.candidates || []
 
-    const displaySet = setNameKo[a.set_name] || a.set_name
-    const slotIcon = slotIcons[a.slot] || 'help'
+    totalEl.textContent = data.total || 0
+    analyzedEl.textContent = data.analyzed || 0
+    candidatesEl.textContent = candidates.length
 
-    grid.innerHTML += `
-      <div class="artifact-card sd-card">
-        <div class="artifact-card__accent artifact-card__accent--error"></div>
-        <div class="artifact-card__body">
-          <div class="artifact-card__top">
-            <div class="artifact-card__icon-wrap">
-              <div class="artifact-card__icon artifact-card__icon--red">
-                <span class="material-symbols-outlined" style="font-size:1.5rem">${slotIcon}</span>
+    loading.style.display = 'none'
+
+    if (candidates.length === 0) {
+      empty.style.display = 'block'
+      return
+    }
+
+    grid.style.display = ''
+    grid.innerHTML = ''
+
+    candidates.forEach((c) => {
+      const a = c.artifact
+      const subs = [
+        { name: a.sub1_name, value: a.sub1_value },
+        { name: a.sub2_name, value: a.sub2_value },
+        { name: a.sub3_name, value: a.sub3_value },
+        { name: a.sub4_name, value: a.sub4_value },
+      ].filter(s => s.name)
+
+      const subsHTML = subs.map(s => `
+        <div class="substat">
+          <div class="substat__left">
+            <div class="substat__bar substat__bar--low"></div>
+            <span class="substat__name">${s.name}</span>
+          </div>
+          <div class="substat__right">
+            <span class="substat__value">${s.value}</span>
+          </div>
+        </div>`).join('')
+
+      const reasonsHTML = c.reasons.map(r => `
+        <div class="sd-reason">
+          <span class="material-symbols-outlined" style="font-size:0.75rem">warning</span>
+          <span>${r}</span>
+        </div>`).join('')
+
+      const displaySet = setNameKo[a.set_name] || a.set_name
+      const slotIcon = slotIcons[a.slot] || 'help'
+      const bestCharHTML = c.best_character
+        ? `<p class="sd-best-char">최적 캐릭터: ${c.best_character} (${c.best_character_score}점)</p>`
+        : ''
+
+      grid.innerHTML += `
+        <div class="artifact-card sd-card">
+          <div class="artifact-card__accent artifact-card__accent--error"></div>
+          <div class="artifact-card__body">
+            <div class="artifact-card__top">
+              <div class="artifact-card__icon-wrap">
+                <div class="artifact-card__icon artifact-card__icon--red">
+                  <span class="material-symbols-outlined" style="font-size:1.5rem">${slotIcon}</span>
+                </div>
+                <span class="artifact-card__level">+${a.level}</span>
               </div>
-              <span class="artifact-card__level">+${a.level}</span>
+              <div class="artifact-card__main-stat">
+                <p class="artifact-card__main-stat-label">Main Stat</p>
+                <p class="artifact-card__main-stat-type">${a.main_stat_type}</p>
+              </div>
             </div>
-            <div class="artifact-card__main-stat">
-              <p class="artifact-card__main-stat-label">Main Stat</p>
-              <p class="artifact-card__main-stat-type">${a.main_stat_type}</p>
+            <div>
+              <h3 class="artifact-card__name" style="font-size:0.75rem">${displaySet}</h3>
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem">
+                <span class="sd-score-badge">점수 ${c.score}</span>
+                ${a.rarity && a.rarity < 5 ? `<span style="font-size:0.625rem;color:var(--on-surface-variant)">${a.rarity}★</span>` : ''}
+              </div>
+              ${bestCharHTML}
             </div>
+            <div class="substats">${subsHTML}</div>
+            <div class="sd-reasons">${reasonsHTML}</div>
           </div>
-          <div>
-            <h3 class="artifact-card__name" style="font-size:0.75rem">${displaySet}</h3>
-            <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem">
-              <span class="sd-score-badge">점수 ${c.score}</span>
-              ${a.rarity && a.rarity < 5 ? `<span style="font-size:0.625rem;color:var(--on-surface-variant)">${a.rarity}★</span>` : ''}
-            </div>
-          </div>
-          <div class="substats">${subsHTML}</div>
-          <div class="sd-reasons">${reasonsHTML}</div>
-        </div>
-      </div>`
-  })
+        </div>`
+    })
+  }
+
+  // Initial fetch
+  await fetchAndRender(slider ? slider.value : 25)
+
+  // Slider change with debounce
+  if (slider) {
+    let debounceTimer = null
+    slider.addEventListener('input', () => {
+      if (sliderVal) sliderVal.textContent = slider.value
+      clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => fetchAndRender(slider.value), 400)
+    })
+  }
 }
 
 // --- Router ---

@@ -775,40 +775,22 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 	}
 	artifacts := parseRows(result)
 
-	// Build reverse index: set → characters who recommend it
-	setToChars := map[string][]string{}
-	for char, sets := range characterBestSets {
-		for _, s := range sets {
-			setToChars[s] = append(setToChars[s], char)
-		}
-	}
-
-	// Check if any character in the list is an HP/DEF/EM scaler
-	hasScalerForSet := func(setName, scalerType string) bool {
-		chars := setToChars[setName]
-		for _, c := range chars {
-			switch scalerType {
-			case "hp":
-				if hpScalingCharacters[c] {
-					return true
-				}
-			case "def":
-				if defScalingCharacters[c] {
-					return true
-				}
-			case "em":
-				if emScalingCharacters[c] {
-					return true
-				}
+	// Parse threshold from query param (default 35, range 10-80)
+	threshold := 35.0
+	if tStr := r.URL.Query().Get("threshold"); tStr != "" {
+		if t, err := strconv.ParseFloat(tStr, 64); err == nil {
+			if t >= 10 && t <= 80 {
+				threshold = t
 			}
 		}
-		return false
 	}
 
 	type discardCandidate struct {
-		Artifact map[string]interface{} `json:"artifact"`
-		Score    int                    `json:"score"`
-		Reasons  []string               `json:"reasons"`
+		Artifact      map[string]interface{} `json:"artifact"`
+		Score         float64                `json:"score"`
+		BestCharacter string                 `json:"best_character"`
+		BestCharScore float64                `json:"best_character_score"`
+		Reasons       []string               `json:"reasons"`
 	}
 
 	candidates := []discardCandidate{}
@@ -823,111 +805,127 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		score := 0
-		reasons := []string{}
 		setName := str(a["set_name"])
 		slot := str(a["slot"])
-		mainStat := strings.ToLower(str(a["main_stat_type"]))
-		level := intVal(a["level"])
-		rarity := intVal(a["rarity"])
-		if rarity == 0 {
-			rarity = 5
+		mainStat := str(a["main_stat_type"])
+
+		// Collect substat keys
+		subKeys := []string{
+			str(a["sub1_name"]),
+			str(a["sub2_name"]),
+			str(a["sub3_name"]),
+			str(a["sub4_name"]),
 		}
 
-		// 1. Set relevance (0 or 35)
-		chars := setToChars[setName]
-		if len(chars) > 0 {
-			score += 35
-		} else {
-			reasons = append(reasons, "추천 캐릭터가 없는 세트")
-		}
+		bestScore := 0.0
+		bestChar := ""
 
-		// 2. Main stat (0-30)
-		if slot == "flower" || slot == "plume" {
-			score += 25
-		} else {
-			switch {
-			case strings.Contains(mainStat, "critrate") || strings.Contains(mainStat, "critdmg") ||
-				strings.Contains(mainStat, "crit_rate") || strings.Contains(mainStat, "crit_dmg") ||
-				mainStat == "critrate_" || mainStat == "critdmg_":
-				score += 28 // crit main stats are always premium
-			case strings.Contains(mainStat, "atk_") || strings.Contains(mainStat, "atk%"):
-				score += 22
-			case strings.Contains(mainStat, "enerr") || strings.Contains(mainStat, "enerreч") ||
-				mainStat == "enerrech_":
-				score += 20
-			case strings.Contains(mainStat, "elemas") || mainStat == "elemas":
-				if hasScalerForSet(setName, "em") || len(chars) == 0 {
-					score += 20
-				} else {
-					score += 12
+		// Score against every character
+		for charName, weights := range characterStatWeights {
+			score := 0.0
+
+			// 1. Set bonus (0 or 30)
+			charSets := characterBestSets[charName]
+			setMatch := false
+			for _, s := range charSets {
+				if s == setName {
+					setMatch = true
+					break
 				}
-			case strings.Contains(mainStat, "dmg"):
-				score += 20 // elemental/physical DMG bonus
-			case strings.Contains(mainStat, "hp_") || strings.Contains(mainStat, "hp%"):
-				if hasScalerForSet(setName, "hp") {
-					score += 22
-				} else {
-					score += 5
-					reasons = append(reasons, "HP% 메인 — 해당 세트에 HP 스케일링 캐릭터 없음")
+			}
+			if setMatch {
+				score += 30
+			}
+
+			// 2. Main stat (0-30, auto 30 for flower/plume)
+			if slot == "flower" || slot == "plume" {
+				score += 30
+			} else {
+				desiredSlots := characterDesiredMainStats[charName]
+				if desiredSlots != nil {
+					desired := desiredSlots[slot]
+					mainMatch := false
+					for _, d := range desired {
+						if d == mainStat {
+							mainMatch = true
+							break
+						}
+					}
+					if mainMatch {
+						score += 30
+					}
 				}
-			case strings.Contains(mainStat, "def_") || strings.Contains(mainStat, "def%"):
-				if hasScalerForSet(setName, "def") {
-					score += 22
-				} else {
-					reasons = append(reasons, "DEF% 메인 — 해당 세트에 방어력 스케일링 캐릭터 없음")
+			}
+
+			// 3. Substats (0-40): weight * 10 per sub
+			for _, sk := range subKeys {
+				if sk == "" {
+					continue
 				}
-			case strings.Contains(mainStat, "heal"):
-				score += 10
-			default:
-				reasons = append(reasons, "메인 옵션이 부적합")
+				if w, ok := weights[sk]; ok {
+					score += w * 10
+				}
+			}
+
+			percentScore := score // max is 100
+
+			if percentScore > bestScore {
+				bestScore = percentScore
+				bestChar = charName
 			}
 		}
 
-		// 3. Substats (0-30)
-		subs := []string{
-			strings.ToLower(str(a["sub1_name"])),
-			strings.ToLower(str(a["sub2_name"])),
-			strings.ToLower(str(a["sub3_name"])),
-			strings.ToLower(str(a["sub4_name"])),
-		}
-		critCount := 0
-		usefulCount := 0
-		for _, s := range subs {
-			if s == "" {
-				continue
+		// Build reasons
+		if bestScore < threshold {
+			reasons := []string{}
+
+			// Check set match for best char
+			charSets := characterBestSets[bestChar]
+			setMatch := false
+			for _, s := range charSets {
+				if s == setName {
+					setMatch = true
+					break
+				}
 			}
-			if strings.Contains(s, "crit") {
-				critCount++
-				usefulCount++
-			} else if strings.Contains(s, "atk_") || strings.Contains(s, "enerr") || strings.Contains(s, "elemas") {
-				usefulCount++
+			if !setMatch {
+				reasons = append(reasons, "추천 세트 아님")
 			}
-		}
-		score += critCount * 12
-		score += (usefulCount - critCount) * 4
-		if critCount == 0 {
-			reasons = append(reasons, "치명타 부옵션 없음")
-		}
 
-		// 4. Level investment
-		score += min(level, 20)
+			// Check main stat for best char
+			if slot != "flower" && slot != "plume" {
+				mainMatch := false
+				if desiredSlots := characterDesiredMainStats[bestChar]; desiredSlots != nil {
+					for _, d := range desiredSlots[slot] {
+						if d == mainStat {
+							mainMatch = true
+							break
+						}
+					}
+				}
+				if !mainMatch {
+					reasons = append(reasons, "메인 옵션 부적합")
+				}
+			}
 
-		// 5. Rarity penalty
-		if rarity > 0 && rarity <= 3 {
-			score -= 25
-			reasons = append(reasons, fmt.Sprintf("%d성 성유물", rarity))
-		} else if rarity == 4 {
-			score -= 10
-			reasons = append(reasons, "4성 성유물")
-		}
+			// Check crit substats
+			hasCrit := false
+			for _, sk := range subKeys {
+				if sk == "critRate_" || sk == "critDMG_" {
+					hasCrit = true
+					break
+				}
+			}
+			if !hasCrit {
+				reasons = append(reasons, "치명타 부옵 없음")
+			}
 
-		// Threshold: score < 30 = discard candidate
-		if score < 30 {
 			candidates = append(candidates, discardCandidate{
-				Artifact: a,
-				Score:    score,
-				Reasons:  reasons,
+				Artifact:      a,
+				Score:         math.Round(bestScore*10) / 10,
+				BestCharacter: bestChar,
+				BestCharScore: math.Round(bestScore*10) / 10,
+				Reasons:       reasons,
 			})
 		}
 	}
@@ -942,6 +940,7 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 		"candidates": candidates,
 		"total":      len(artifacts),
 		"analyzed":   len(artifacts) - countEquipped(artifacts),
+		"threshold":  threshold,
 	})
 }
 
@@ -1593,11 +1592,11 @@ var artifactSetKoreanNames = map[string]string{
 	"SongOfDaysPast": "지난날의 노래", "NighttimeWhispersInTheEchoingWoods": "메아리숲의 야화",
 	"FragmentOfHarmonicWhimsy": "조화로운 공상의 단편", "UnfinishedReverie": "미완의 몽상",
 	"ScrollOfTheHeroOfCinderCity": "잿더미성 용사의 두루마리", "ObsidianCodex": "흑요석 비전",
-	"LongNightsOath": "긴 밤의 맹세", "FinaleOfTheDeep": "깊은 회랑의 피날레",
-	"NocturneSerenade": "달을 엮는 밤노래",
+	"LongNightsOath": "긴 밤의 맹세", "FinaleOfTheDeepGalleries": "깊은 회랑의 피날레",
+	"SilkenMoonsSerenade": "달을 엮는 밤노래",
 	"AubadeOfMorningstarAndMoon": "샛별과 달의 여명",
-	"SkyRevealedAtNight": "하늘 경계가 드러난 밤",
-	"TheDayTheWindBegan": "바람이 시작되는 날",
+	"NightOfTheSkysUnveiling": "하늘 경계가 드러난 밤",
+	"ADayCarvedFromRisingWinds": "바람이 시작되는 날",
 }
 
 // Maps character name → recommended artifact sets (GOOD format PascalCase keys)
@@ -1611,16 +1610,16 @@ var characterBestSets = map[string][]string{
 	"Thoma": {"EmblemOfSeveredFate", "NoblesseOblige"}, "Dehya": {"VourukashasGlow"},
 	"Lyney": {"MarechausseeHunter"}, "Chevreuse": {"NoblesseOblige"},
 	"Gaming": {"CrimsonWitchOfFlames", "MarechausseeHunter"},
-	"Arlecchino": {"FragmentOfHarmonicWhimsy"}, "Mavuika": {"ObsidianCodex"},
+	"Arlecchino": {"FragmentOfHarmonicWhimsy"}, "Mavuika": {"ObsidianCodex", "FinaleOfTheDeepGalleries"},
 	"Columbina": {"AubadeOfMorningstarAndMoon", "EmblemOfSeveredFate"},
 	// Hydro
 	"Barbara": {"OceanHuedClam", "MaidenBeloved"}, "Xingqiu": {"EmblemOfSeveredFate"},
 	"Mona": {"EmblemOfSeveredFate", "NoblesseOblige"}, "Tartaglia": {"HeartOfDepth"},
 	"Kokomi": {"OceanHuedClam", "TenacityOfTheMillelith"},
-	"Ayato": {"HeartOfDepth", "GladiatorsFinale"}, "Yelan": {"EmblemOfSeveredFate"},
+	"Ayato": {"HeartOfDepth", "GladiatorsFinale", "EchoesOfAnOffering"}, "Yelan": {"EmblemOfSeveredFate"},
 	"Candace": {"EmblemOfSeveredFate", "NoblesseOblige"},
 	"Nilou": {"TenacityOfTheMillelith", "FlowerOfParadiseLost"},
-	"Neuvillette": {"MarechausseeHunter"}, "Furina": {"GoldenTroupe"},
+	"Neuvillette": {"MarechausseeHunter", "NymphsDream"}, "Furina": {"GoldenTroupe"},
 	"Sigewinne": {"OceanHuedClam", "SongOfDaysPast"}, "Mualani": {"ObsidianCodex"},
 	"Dahlia": {"NoblesseOblige", "TenacityOfTheMillelith"},
 	// Electro
@@ -1667,6 +1666,260 @@ var characterBestSets = map[string][]string{
 	"Ningguang": {"ArchaicPetra", "NoblesseOblige"},
 	"Razor": {"PaleFlame", "GladiatorsFinale"}, "Kaeya": {"BlizzardStrayer", "EmblemOfSeveredFate"},
 	"Xinyan": {"PaleFlame", "BloodstainedChivalry"}, "Yun Jin": {"HuskOfOpulentDreams", "NoblesseOblige"},
+	// New 5.5+ sets & characters
+	"Skirk": {"FinaleOfTheDeepGalleries"}, "Eula": {"PaleFlame", "FinaleOfTheDeepGalleries"},
+	"Nefer": {"NightOfTheSkysUnveiling"}, "Zibai": {"NightOfTheSkysUnveiling"},
+	"Lauma": {"SilkenMoonsSerenade", "NightOfTheSkysUnveiling"},
+	"Aino": {"SilkenMoonsSerenade", "NoblesseOblige"},
+	"Ineffa": {"SilkenMoonsSerenade"},
+	"Escoffier": {"SilkenMoonsSerenade", "NoblesseOblige"},
+	"Ifa": {"NightOfTheSkysUnveiling", "SilkenMoonsSerenade"},
+	"Durin": {"ADayCarvedFromRisingWinds"},
+	"Illuga": {"ObsidianCodex", "ScrollOfTheHeroOfCinderCity"},
+	"Manekin": {"ADayCarvedFromRisingWinds", "NoblesseOblige"},
+}
+
+// characterStatWeights maps character name → substat key → weight (0.0-1.0)
+// Used by smart discard to score artifacts per-character (Fribbels-style relative scoring)
+var characterStatWeights = map[string]map[string]float64{
+	// --- DPS (crit 1.0, atk 0.75, er 0.25) ---
+	"Diluc":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Klee":        {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Yanfei":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Yoimiya":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Lyney":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Gaming":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Arlecchino":  {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Mavuika":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Tartaglia":   {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Ayato":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Keqing":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Ganyu":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Ayaka":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Wriothesley": {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Wanderer":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Xiao":        {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Heizou":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.5},
+	"Navia":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Ningguang":   {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Razor":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Xinyan":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Freminet":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Amber":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Aloy":        {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Chasca":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.5},
+	"Varesa":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Tighnari":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.75},
+	"Kaeya":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	// --- HP scalers ---
+	"Hu Tao":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0, "eleMas": 0.75},
+	"Zhongli":     {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Yelan":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Kokomi":      {"critRate_": 0, "critDMG_": 0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Neuvillette": {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Furina":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Nilou":       {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.75},
+	"Sigewinne":   {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Mualani":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Candace":     {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Layla":       {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Dahlia":      {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Columbina":   {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 1.0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	// --- DEF scalers ---
+	"Albedo":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.25, "eleMas": 0},
+	"Noelle":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.25, "eleMas": 0},
+	"Arataki Itto": {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.25, "eleMas": 0},
+	"Gorou":        {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.75, "eleMas": 0},
+	"Yun Jin":      {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.75, "eleMas": 0},
+	"Chiori":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.25, "eleMas": 0},
+	"Kachina":      {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.5, "eleMas": 0},
+	// --- EM scalers ---
+	"Kaedehara Kazuha": {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 1.0},
+	"Nahida":            {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 1.0},
+	"Sucrose":           {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 1.0},
+	"Alhaitham":         {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 1.0},
+	"Cyno":              {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 1.0},
+	"Kuki Shinobu":      {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0, "hp_": 0.5, "def_": 0, "enerRech_": 0.25, "eleMas": 1.0},
+	"Kaveh":             {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 1.0},
+	"Sethos":            {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 1.0},
+	"Citlali":           {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 1.0},
+	"Yumemizuki Mizuki": {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.5, "def_": 0, "enerRech_": 0.5, "eleMas": 1.0},
+	"Kinich":            {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.75},
+	"Emilie":            {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.5},
+	// --- Support / Healers (ER primary) ---
+	"Bennett":    {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.25, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Barbara":    {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Diona":      {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Qiqi":       {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Mika":       {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Charlotte":  {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Baizhu":     {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Yaoyao":     {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0.5},
+	"Kirara":     {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Dori":       {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Xianyun":    {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Chevreuse":  {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Lynette":    {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Lan Yan":    {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0.75},
+	// --- Anemo VV supports (EM primary) ---
+	"Venti": {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 1.0},
+	"Jean":  {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0.75},
+	"Sayu":  {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 1.0},
+	// --- Sub-DPS / burst DPS (crit + ER) ---
+	"Xiangling":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0.5},
+	"Xingqiu":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Beidou":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0.25},
+	"Fischl":       {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Yae Miko":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 0.5},
+	"Raiden Shogun": {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Lisa":         {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0.5},
+	"Mona":         {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0.25},
+	"Rosaria":      {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Chongyun":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Shenhe":       {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 1.0, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Thoma":        {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Dehya":        {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0.5, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Kujou Sara":   {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Clorinde":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Ororon":       {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0.75},
+	"Iansan":       {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+	"Collei":       {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0.5},
+	"Faruzan":      {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Xilonen":      {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 1.0, "enerRech_": 0.75, "eleMas": 0},
+	// --- New 5.5+ characters ---
+	"Skirk":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0, "eleMas": 0},
+	"Eula":     {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 0},
+	"Nefer":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 1.0},
+	"Zibai":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.5, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.75},
+	"Lauma":    {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 0.75, "eleMas": 1.0},
+	"Aino":     {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0.5},
+	"Ineffa":   {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 1.0},
+	"Escoffier": {"critRate_": 0.25, "critDMG_": 0.25, "atk_": 0, "hp_": 0.75, "def_": 0, "enerRech_": 1.0, "eleMas": 0},
+	"Ifa":      {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.25, "hp_": 0, "def_": 0, "enerRech_": 0.5, "eleMas": 1.0},
+	"Durin":    {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0.25},
+	"Illuga":   {"critRate_": 1.0, "critDMG_": 1.0, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.25, "eleMas": 0},
+	"Manekin":  {"critRate_": 0.5, "critDMG_": 0.5, "atk_": 0.75, "hp_": 0, "def_": 0, "enerRech_": 0.75, "eleMas": 0},
+}
+
+// characterDesiredMainStats maps character name → slot → acceptable main stat keys
+var characterDesiredMainStats = map[string]map[string][]string{
+	// --- DPS (ATK% sands, elem goblet, crit circlet) ---
+	"Diluc":       {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Klee":        {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Yanfei":      {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Yoimiya":     {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Lyney":       {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Gaming":      {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Arlecchino":  {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Mavuika":     {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Tartaglia":   {"sands": {"atk_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Ayato":       {"sands": {"atk_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Keqing":      {"sands": {"atk_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Ganyu":       {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Ayaka":       {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Wriothesley": {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Wanderer":    {"sands": {"atk_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Xiao":        {"sands": {"atk_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Heizou":      {"sands": {"atk_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Navia":       {"sands": {"atk_"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Ningguang":   {"sands": {"atk_"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Razor":       {"sands": {"atk_"}, "goblet": {"physical_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Xinyan":      {"sands": {"atk_"}, "goblet": {"physical_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Freminet":    {"sands": {"atk_"}, "goblet": {"physical_dmg_", "cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Amber":       {"sands": {"atk_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Aloy":        {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Chasca":      {"sands": {"atk_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Varesa":      {"sands": {"atk_", "eleMas"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Tighnari":    {"sands": {"eleMas", "atk_"}, "goblet": {"dendro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Kaeya":       {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	// --- HP scalers ---
+	"Hu Tao":      {"sands": {"hp_", "eleMas"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Zhongli":     {"sands": {"hp_"}, "goblet": {"hp_"}, "circlet": {"hp_", "critRate_", "critDMG_"}},
+	"Yelan":       {"sands": {"hp_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Kokomi":      {"sands": {"hp_", "enerRech_"}, "goblet": {"hydro_dmg_", "hp_"}, "circlet": {"heal_"}},
+	"Neuvillette": {"sands": {"hp_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Furina":      {"sands": {"hp_"}, "goblet": {"hp_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Nilou":       {"sands": {"hp_"}, "goblet": {"hp_"}, "circlet": {"hp_"}},
+	"Sigewinne":   {"sands": {"hp_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Mualani":     {"sands": {"hp_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Candace":     {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "critRate_"}},
+	"Layla":       {"sands": {"hp_"}, "goblet": {"hp_"}, "circlet": {"hp_"}},
+	"Dahlia":      {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_"}},
+	"Columbina":   {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"critRate_", "critDMG_"}},
+	// --- DEF scalers ---
+	"Albedo":       {"sands": {"def_"}, "goblet": {"geo_dmg_", "def_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Noelle":       {"sands": {"def_"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Arataki Itto": {"sands": {"def_"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Gorou":        {"sands": {"def_", "enerRech_"}, "goblet": {"def_"}, "circlet": {"def_"}},
+	"Yun Jin":      {"sands": {"def_", "enerRech_"}, "goblet": {"def_"}, "circlet": {"def_"}},
+	"Chiori":       {"sands": {"def_"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Kachina":      {"sands": {"def_"}, "goblet": {"geo_dmg_", "def_"}, "circlet": {"critRate_", "critDMG_", "def_"}},
+	// --- EM scalers ---
+	"Kaedehara Kazuha": {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Nahida":            {"sands": {"eleMas"}, "goblet": {"dendro_dmg_", "eleMas"}, "circlet": {"critRate_", "critDMG_"}},
+	"Sucrose":           {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Alhaitham":         {"sands": {"eleMas"}, "goblet": {"dendro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Cyno":              {"sands": {"eleMas"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Kuki Shinobu":      {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Kaveh":             {"sands": {"eleMas", "enerRech_"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Sethos":            {"sands": {"eleMas"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Citlali":           {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Yumemizuki Mizuki": {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Kinich":            {"sands": {"atk_"}, "goblet": {"dendro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Emilie":            {"sands": {"atk_"}, "goblet": {"dendro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	// --- Supports / Healers ---
+	"Bennett":    {"sands": {"enerRech_", "hp_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Barbara":    {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Diona":      {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Qiqi":       {"sands": {"atk_", "enerRech_"}, "goblet": {"atk_"}, "circlet": {"heal_", "atk_"}},
+	"Mika":       {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Charlotte":  {"sands": {"atk_", "enerRech_"}, "goblet": {"atk_"}, "circlet": {"atk_", "heal_"}},
+	"Baizhu":     {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Yaoyao":     {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Kirara":     {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_"}},
+	"Dori":       {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Xianyun":    {"sands": {"atk_", "enerRech_"}, "goblet": {"atk_"}, "circlet": {"atk_", "heal_"}},
+	"Chevreuse":  {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_"}},
+	"Lynette":    {"sands": {"atk_", "enerRech_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Lan Yan":    {"sands": {"enerRech_", "eleMas"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	// --- Anemo VV supports ---
+	"Venti": {"sands": {"eleMas", "enerRech_"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Jean":  {"sands": {"atk_", "enerRech_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_", "heal_"}},
+	"Sayu":  {"sands": {"eleMas", "enerRech_"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	// --- Sub-DPS / burst DPS ---
+	"Xiangling":    {"sands": {"atk_", "enerRech_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Xingqiu":      {"sands": {"atk_", "enerRech_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Beidou":       {"sands": {"atk_", "enerRech_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Fischl":       {"sands": {"atk_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Yae Miko":     {"sands": {"atk_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Raiden Shogun": {"sands": {"enerRech_", "atk_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Lisa":         {"sands": {"atk_", "enerRech_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Mona":         {"sands": {"enerRech_", "atk_"}, "goblet": {"hydro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Rosaria":      {"sands": {"atk_"}, "goblet": {"cryo_dmg_", "physical_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Chongyun":     {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Shenhe":       {"sands": {"atk_"}, "goblet": {"atk_"}, "circlet": {"atk_"}},
+	"Thoma":        {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_"}},
+	"Dehya":        {"sands": {"atk_", "hp_"}, "goblet": {"pyro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Kujou Sara":   {"sands": {"atk_", "enerRech_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Clorinde":     {"sands": {"atk_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Ororon":       {"sands": {"enerRech_", "eleMas"}, "goblet": {"electro_dmg_", "eleMas"}, "circlet": {"critRate_", "critDMG_"}},
+	"Iansan":       {"sands": {"atk_", "enerRech_"}, "goblet": {"electro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Collei":       {"sands": {"atk_", "enerRech_"}, "goblet": {"dendro_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Faruzan":      {"sands": {"atk_", "enerRech_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Xilonen":      {"sands": {"def_", "enerRech_"}, "goblet": {"def_"}, "circlet": {"def_"}},
+	// --- New 5.5+ characters ---
+	"Skirk":     {"sands": {"atk_"}, "goblet": {"cryo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Eula":      {"sands": {"atk_"}, "goblet": {"physical_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Nefer":     {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"critRate_", "critDMG_"}},
+	"Zibai":     {"sands": {"atk_", "eleMas"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Lauma":     {"sands": {"eleMas", "enerRech_"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Aino":      {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Ineffa":    {"sands": {"eleMas", "enerRech_"}, "goblet": {"eleMas"}, "circlet": {"eleMas"}},
+	"Escoffier": {"sands": {"hp_", "enerRech_"}, "goblet": {"hp_"}, "circlet": {"hp_", "heal_"}},
+	"Ifa":       {"sands": {"eleMas"}, "goblet": {"eleMas"}, "circlet": {"critRate_", "critDMG_"}},
+	"Durin":     {"sands": {"atk_"}, "goblet": {"anemo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Illuga":    {"sands": {"atk_"}, "goblet": {"geo_dmg_"}, "circlet": {"critRate_", "critDMG_"}},
+	"Manekin":   {"sands": {"atk_", "enerRech_"}, "goblet": {"atk_"}, "circlet": {"critRate_", "critDMG_"}},
 }
 
 // weaponRecommendation holds best weapons for a character

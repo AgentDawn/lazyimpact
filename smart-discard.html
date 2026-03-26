@@ -65,6 +65,16 @@
 
           <hr style="border:none;border-top:1px solid var(--outline-variant);margin:1rem 0"/>
 
+          <div style="margin-bottom:1rem">
+            <label for="sd-threshold" style="font-size:0.75rem;font-weight:600;color:var(--on-surface-variant);display:flex;justify-content:space-between;margin-bottom:0.5rem">
+              <span>폐기 기준 (높을수록 엄격)</span>
+              <strong id="sd-threshold-val" style="color:var(--on-surface)">35</strong>
+            </label>
+            <input type="range" id="sd-threshold" min="10" max="80" step="5" value="35" style="width:100%;accent-color:var(--error)"/>
+          </div>
+
+          <hr style="border:none;border-top:1px solid var(--outline-variant);margin:1rem 0"/>
+
           <p style="font-size:0.75rem;color:var(--on-surface-variant);line-height:1.5">
             아래 목록의 성유물을 <strong>게임 내에서</strong> 직접 폐기하거나 경험치 재료로 사용하세요.
           </p>
@@ -155,6 +165,10 @@
   padding:0.125rem 0.5rem; border-radius:var(--r-sm);
   font-size:0.625rem; font-weight:700;
   background:var(--error-container); color:var(--on-error-container);
+}
+.sd-card .sd-best-char {
+  font-size:0.6875rem; color:var(--on-surface-variant);
+  margin-top:0.375rem;
 }
 </style>
 
