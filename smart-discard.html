@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LazyImpact | Smart Discard</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__inner">
+    <div style="display:flex;align-items:center;gap:2rem;">
+      <a href="index.html" class="nav__brand">LazyImpact</a>
+      <ul class="nav__links">
+        <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
+        <li><a href="characters.html" class="nav__link" data-i18n="nav.characters">캐릭터</a></li>
+        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
+        <li><a href="artifacts.html" class="nav__link" data-i18n="nav.artifacts">성유물</a></li>
+        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
+        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
+        <li><a href="planner.html" class="nav__link">Planner</a></li>
+        <li><a href="abyss.html" class="nav__link">나선비경</a></li>
+        <li><a href="scanner.html" class="nav__link" data-i18n="nav.scanner">스캐너</a></li>
+      </ul>
+    </div>
+    <div class="nav__actions">
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">settings</span></button>
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">account_circle</span></button>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="layout-sidebar">
+
+    <!-- Sidebar: Summary & Controls -->
+    <aside class="sidebar">
+      <div class="sidebar__sticky">
+        <div class="filter-card">
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem">
+            <span class="material-symbols-outlined" style="font-size:2rem;color:var(--error)">auto_delete</span>
+            <div>
+              <h2 style="font-size:1rem;font-weight:700">스마트 폐기</h2>
+              <p style="font-size:0.6875rem;color:var(--on-surface-variant)">불필요한 성유물 자동 분석</p>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:0.75rem;font-size:0.8125rem;color:var(--on-surface-variant)">
+            <div style="display:flex;justify-content:space-between">
+              <span>전체 성유물</span>
+              <strong id="sd-total" style="color:var(--on-surface)">—</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span>분석 대상</span>
+              <strong id="sd-analyzed" style="color:var(--on-surface)">—</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span>폐기 후보</span>
+              <strong id="sd-candidates" style="color:var(--error)">—</strong>
+            </div>
+          </div>
+
+          <hr style="border:none;border-top:1px solid var(--outline-variant);margin:1rem 0"/>
+
+          <p style="font-size:0.75rem;color:var(--on-surface-variant);line-height:1.5">
+            아래 목록의 성유물을 <strong>게임 내에서</strong> 직접 폐기하거나 경험치 재료로 사용하세요.
+          </p>
+        </div>
+
+        <!-- Legend -->
+        <div class="filter-card" style="margin-top:1rem">
+          <h3 style="font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;color:var(--on-surface-variant);margin-bottom:0.75rem">분석 기준</h3>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.75rem;color:var(--on-surface-variant)">
+            <div style="display:flex;align-items:start;gap:0.5rem">
+              <span class="material-symbols-outlined" style="font-size:0.875rem;color:var(--error);flex-shrink:0">close</span>
+              <span>추천 캐릭터 없는 세트</span>
+            </div>
+            <div style="display:flex;align-items:start;gap:0.5rem">
+              <span class="material-symbols-outlined" style="font-size:0.875rem;color:var(--error);flex-shrink:0">close</span>
+              <span>부적합한 메인 옵션</span>
+            </div>
+            <div style="display:flex;align-items:start;gap:0.5rem">
+              <span class="material-symbols-outlined" style="font-size:0.875rem;color:var(--error);flex-shrink:0">close</span>
+              <span>치명타 부옵션 없음</span>
+            </div>
+            <div style="display:flex;align-items:start;gap:0.5rem">
+              <span class="material-symbols-outlined" style="font-size:0.875rem;color:var(--outline);flex-shrink:0">shield</span>
+              <span>장착 중/잠금 성유물은 제외</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content: Discard Candidates -->
+    <section class="content-area">
+      <div class="artifacts-header">
+        <div>
+          <h1>Smart Discard</h1>
+          <p style="color:var(--on-surface-variant)">어떤 캐릭터에게도 불필요한 성유물을 자동으로 분석합니다</p>
+        </div>
+        <a href="artifacts.html" class="sort-tab" style="text-decoration:none;display:flex;align-items:center;gap:0.25rem">
+          <span class="material-symbols-outlined" style="font-size:1rem">arrow_back</span>
+          성유물 목록
+        </a>
+      </div>
+
+      <!-- Loading state -->
+      <div id="sd-loading" style="text-align:center;padding:4rem;color:var(--on-surface-variant)">
+        <span class="material-symbols-outlined" style="font-size:3rem;display:block;margin-bottom:1rem;animation:spin 1s linear infinite">progress_activity</span>
+        <p>성유물을 분석하고 있습니다...</p>
+      </div>
+
+      <!-- Empty state -->
+      <div id="sd-empty" style="display:none;text-align:center;padding:4rem">
+        <span class="material-symbols-outlined" style="font-size:4rem;color:var(--secondary);display:block;margin-bottom:1rem">verified</span>
+        <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.5rem">폐기할 성유물이 없습니다!</h2>
+        <p style="color:var(--on-surface-variant);font-size:0.875rem">모든 성유물이 최소 한 캐릭터에게 유용합니다.</p>
+      </div>
+
+      <!-- Grid -->
+      <div class="artifact-grid" id="sd-grid" style="display:none"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer__inner">
+    <ul class="footer__links">
+      <li><a href="#">Documentation</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Changelog</a></li>
+    </ul>
+    <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
+  </div>
+</footer>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg) } }
+.sd-card { position:relative; }
+.sd-card .sd-reasons {
+  display:flex; flex-direction:column; gap:0.25rem;
+  margin-top:0.75rem; padding-top:0.75rem;
+  border-top:1px solid var(--outline-variant);
+}
+.sd-card .sd-reason {
+  display:flex; align-items:center; gap:0.375rem;
+  font-size:0.6875rem; color:var(--error);
+}
+.sd-card .sd-score-badge {
+  display:inline-flex; align-items:center; gap:0.25rem;
+  padding:0.125rem 0.5rem; border-radius:var(--r-sm);
+  font-size:0.625rem; font-weight:700;
+  background:var(--error-container); color:var(--on-error-container);
+}
+</style>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

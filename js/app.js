@@ -902,6 +902,127 @@ function wireAddButtons() {
   })
 }
 
+// --- Page: Smart Discard ---
+async function initSmartDiscard() {
+  const grid = document.getElementById('sd-grid')
+  const loading = document.getElementById('sd-loading')
+  const empty = document.getElementById('sd-empty')
+  const totalEl = document.getElementById('sd-total')
+  const analyzedEl = document.getElementById('sd-analyzed')
+  const candidatesEl = document.getElementById('sd-candidates')
+  if (!grid) return
+
+  let data
+  try {
+    data = await api.get('/artifacts/smart-discard')
+  } catch (e) {
+    loading.innerHTML = '<p style="color:var(--error)">분석 실패. 다시 시도해주세요.</p>'
+    return
+  }
+
+  const candidates = data.candidates || []
+
+  // Update summary
+  totalEl.textContent = data.total || 0
+  analyzedEl.textContent = data.analyzed || 0
+  candidatesEl.textContent = candidates.length
+
+  loading.style.display = 'none'
+
+  if (candidates.length === 0) {
+    empty.style.display = 'block'
+    return
+  }
+
+  grid.style.display = ''
+  grid.innerHTML = ''
+
+  const accents = ['error', 'error', 'error', 'error']
+  const slotIcons = {
+    flower: 'local_florist', plume: 'flight', sands: 'hourglass_empty',
+    goblet: 'wine_bar', circlet: 'crown',
+  }
+  const setNameKo = {
+    GladiatorsFinale: '검투사의 피날레', WanderersTroupe: '대지를 유랑하는 악단',
+    ThunderingFury: '번개 같은 분노', Thundersoother: '뇌명을 평정한 존자',
+    ViridescentVenerer: '청록색 그림자', MaidenBeloved: '사랑받는 소녀',
+    NoblesseOblige: '옛 왕실의 의식', RetracingBolide: '날아오르는 유성',
+    CrimsonWitchOfFlames: '불타오르는 화염의 마녀', Lavawalker: '불 위를 걷는 현인',
+    BloodstainedChivalry: '피에 물든 기사도', ArchaicPetra: '유구한 반암',
+    BlizzardStrayer: '얼음바람 속에서 길잃은 용사', HeartOfDepth: '몰락한 마음',
+    TenacityOfTheMillelith: '견고한 천암', PaleFlame: '창백의 화염',
+    ShimenawasReminiscence: '추억의 시메나와', EmblemOfSeveredFate: '절연의 기치',
+    OceanHuedClam: '바다에 물든 거대 조개', HuskOfOpulentDreams: '풍요로운 꿈의 껍데기',
+    VermillionHereafter: '진사 왕생록', EchoesOfAnOffering: '제사의 여운',
+    DeepwoodMemories: '숲의 기억', GildedDreams: '도금된 꿈',
+    DesertPavilionChronicle: '모래 위 누각의 역사', FlowerOfParadiseLost: '잃어버린 낙원의 꽃',
+    NymphsDream: '님프의 꿈', VourukashasGlow: '감로빛 꽃바다',
+    MarechausseeHunter: '그림자 사냥꾼', GoldenTroupe: '황금 극단',
+    SongOfDaysPast: '지난날의 노래', NighttimeWhispersInTheEchoingWoods: '메아리숲의 야화',
+    FragmentOfHarmonicWhimsy: '조화로운 공상의 단편', UnfinishedReverie: '미완의 몽상',
+    ScrollOfTheHeroOfCinderCity: '잿더미성 용사의 두루마리', ObsidianCodex: '흑요석 비전',
+    LongNightsOath: '긴 밤의 맹세', FinaleOfTheDeep: '깊은 회랑의 피날레',
+  }
+
+  candidates.forEach((c) => {
+    const a = c.artifact
+    const subs = [
+      { name: a.sub1_name, value: a.sub1_value },
+      { name: a.sub2_name, value: a.sub2_value },
+      { name: a.sub3_name, value: a.sub3_value },
+      { name: a.sub4_name, value: a.sub4_value },
+    ].filter(s => s.name)
+
+    const subsHTML = subs.map(s => `
+      <div class="substat">
+        <div class="substat__left">
+          <div class="substat__bar substat__bar--low"></div>
+          <span class="substat__name">${s.name}</span>
+        </div>
+        <div class="substat__right">
+          <span class="substat__value">${s.value}</span>
+        </div>
+      </div>`).join('')
+
+    const reasonsHTML = c.reasons.map(r => `
+      <div class="sd-reason">
+        <span class="material-symbols-outlined" style="font-size:0.75rem">warning</span>
+        <span>${r}</span>
+      </div>`).join('')
+
+    const displaySet = setNameKo[a.set_name] || a.set_name
+    const slotIcon = slotIcons[a.slot] || 'help'
+
+    grid.innerHTML += `
+      <div class="artifact-card sd-card">
+        <div class="artifact-card__accent artifact-card__accent--error"></div>
+        <div class="artifact-card__body">
+          <div class="artifact-card__top">
+            <div class="artifact-card__icon-wrap">
+              <div class="artifact-card__icon artifact-card__icon--red">
+                <span class="material-symbols-outlined" style="font-size:1.5rem">${slotIcon}</span>
+              </div>
+              <span class="artifact-card__level">+${a.level}</span>
+            </div>
+            <div class="artifact-card__main-stat">
+              <p class="artifact-card__main-stat-label">Main Stat</p>
+              <p class="artifact-card__main-stat-type">${a.main_stat_type}</p>
+            </div>
+          </div>
+          <div>
+            <h3 class="artifact-card__name" style="font-size:0.75rem">${displaySet}</h3>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem">
+              <span class="sd-score-badge">점수 ${c.score}</span>
+              ${a.rarity && a.rarity < 5 ? `<span style="font-size:0.625rem;color:var(--on-surface-variant)">${a.rarity}★</span>` : ''}
+            </div>
+          </div>
+          <div class="substats">${subsHTML}</div>
+          <div class="sd-reasons">${reasonsHTML}</div>
+        </div>
+      </div>`
+  })
+}
+
 // --- Router ---
 document.addEventListener('DOMContentLoaded', async () => {
   const page = currentPage
@@ -921,6 +1042,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   else if (page === 'teams') { await initTeams(); wireAddButtons() }
   else if (page === 'builds') { await initBuilds(); wireAddButtons() }
   else if (page === 'theater') initTheater()
+  else if (page === 'smart-discard') initSmartDiscard()
 
   // Re-apply translations after dynamic content is loaded
   if (typeof applyTranslations === 'function') applyTranslations()

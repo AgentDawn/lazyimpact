@@ -15,6 +15,7 @@ const PAGES = [
   { name: 'Theater', path: '/theater.html', title: 'Theater' },
   { name: 'Planner', path: '/planner.html', title: 'Planner' },
   { name: 'Scanner', path: '/scanner.html', title: 'Scanner' },
+  { name: 'Smart Discard', path: '/smart-discard.html', title: 'Smart Discard' },
 ];
 
 test.describe('Page loading', () => {

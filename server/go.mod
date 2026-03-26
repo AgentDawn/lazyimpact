@@ -1,4 +1,4 @@
-module genshin-dashboard
+module lazyimpact
 
 go 1.23
 

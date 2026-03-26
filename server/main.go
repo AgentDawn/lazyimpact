@@ -45,6 +45,8 @@ func main() {
 	mux.HandleFunc("GET /api/artifacts", auth(handleListArtifacts))
 	mux.HandleFunc("POST /api/artifacts", auth(handleCreateArtifact))
 	mux.HandleFunc("DELETE /api/artifacts/{id}", auth(handleDeleteArtifact))
+	mux.HandleFunc("GET /api/artifacts/smart-discard", auth(handleSmartDiscard))
+	mux.HandleFunc("POST /api/artifacts/batch-delete", auth(handleBatchDeleteArtifacts))
 
 	mux.HandleFunc("GET /api/weapons", auth(handleListWeapons))
 	mux.HandleFunc("POST /api/weapons", auth(handleCreateWeapon))
@@ -134,6 +136,8 @@ func initDB() {
 			set_name TEXT NOT NULL,
 			slot TEXT NOT NULL,
 			level INTEGER DEFAULT 0,
+			rarity INTEGER DEFAULT 5,
+			lock INTEGER DEFAULT 0,
 			main_stat_type TEXT,
 			main_stat_value TEXT,
 			sub1_name TEXT, sub1_value TEXT, sub1_rolls INTEGER DEFAULT 0,
@@ -247,6 +251,10 @@ func initDB() {
 		)`,
 	}
 	rqliteExec(stmts)
+
+	// Migrations: add rarity/lock columns to artifacts for existing DBs
+	rqliteExec([]string{`ALTER TABLE artifacts ADD COLUMN rarity INTEGER DEFAULT 5`})
+	rqliteExec([]string{`ALTER TABLE artifacts ADD COLUMN lock INTEGER DEFAULT 0`})
 
 	// Seed shared demo data (user_id=0) if empty
 	result, _ := rqliteQuery("SELECT COUNT(*) AS cnt FROM characters")
@@ -756,6 +764,232 @@ func handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+// --- Smart Discard ---
+
+func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
+	uid := getUserID(r)
+	result, err := rqliteQueryParam("SELECT * FROM artifacts WHERE user_id = ?", uid)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	artifacts := parseRows(result)
+
+	// Build reverse index: set → characters who recommend it
+	setToChars := map[string][]string{}
+	for char, sets := range characterBestSets {
+		for _, s := range sets {
+			setToChars[s] = append(setToChars[s], char)
+		}
+	}
+
+	// Check if any character in the list is an HP/DEF/EM scaler
+	hasScalerForSet := func(setName, scalerType string) bool {
+		chars := setToChars[setName]
+		for _, c := range chars {
+			switch scalerType {
+			case "hp":
+				if hpScalingCharacters[c] {
+					return true
+				}
+			case "def":
+				if defScalingCharacters[c] {
+					return true
+				}
+			case "em":
+				if emScalingCharacters[c] {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	type discardCandidate struct {
+		Artifact map[string]interface{} `json:"artifact"`
+		Score    int                    `json:"score"`
+		Reasons  []string               `json:"reasons"`
+	}
+
+	candidates := []discardCandidate{}
+
+	for _, a := range artifacts {
+		// Skip equipped
+		if str(a["equipped_by"]) != "" {
+			continue
+		}
+		// Skip locked
+		if intVal(a["lock"]) == 1 {
+			continue
+		}
+
+		score := 0
+		reasons := []string{}
+		setName := str(a["set_name"])
+		slot := str(a["slot"])
+		mainStat := strings.ToLower(str(a["main_stat_type"]))
+		level := intVal(a["level"])
+		rarity := intVal(a["rarity"])
+		if rarity == 0 {
+			rarity = 5
+		}
+
+		// 1. Set relevance (0 or 35)
+		chars := setToChars[setName]
+		if len(chars) > 0 {
+			score += 35
+		} else {
+			reasons = append(reasons, "추천 캐릭터가 없는 세트")
+		}
+
+		// 2. Main stat (0-30)
+		if slot == "flower" || slot == "plume" {
+			score += 25
+		} else {
+			switch {
+			case strings.Contains(mainStat, "critrate") || strings.Contains(mainStat, "critdmg") ||
+				strings.Contains(mainStat, "crit_rate") || strings.Contains(mainStat, "crit_dmg") ||
+				mainStat == "critrate_" || mainStat == "critdmg_":
+				score += 28 // crit main stats are always premium
+			case strings.Contains(mainStat, "atk_") || strings.Contains(mainStat, "atk%"):
+				score += 22
+			case strings.Contains(mainStat, "enerr") || strings.Contains(mainStat, "enerreч") ||
+				mainStat == "enerrech_":
+				score += 20
+			case strings.Contains(mainStat, "elemas") || mainStat == "elemas":
+				if hasScalerForSet(setName, "em") || len(chars) == 0 {
+					score += 20
+				} else {
+					score += 12
+				}
+			case strings.Contains(mainStat, "dmg"):
+				score += 20 // elemental/physical DMG bonus
+			case strings.Contains(mainStat, "hp_") || strings.Contains(mainStat, "hp%"):
+				if hasScalerForSet(setName, "hp") {
+					score += 22
+				} else {
+					score += 5
+					reasons = append(reasons, "HP% 메인 — 해당 세트에 HP 스케일링 캐릭터 없음")
+				}
+			case strings.Contains(mainStat, "def_") || strings.Contains(mainStat, "def%"):
+				if hasScalerForSet(setName, "def") {
+					score += 22
+				} else {
+					reasons = append(reasons, "DEF% 메인 — 해당 세트에 방어력 스케일링 캐릭터 없음")
+				}
+			case strings.Contains(mainStat, "heal"):
+				score += 10
+			default:
+				reasons = append(reasons, "메인 옵션이 부적합")
+			}
+		}
+
+		// 3. Substats (0-30)
+		subs := []string{
+			strings.ToLower(str(a["sub1_name"])),
+			strings.ToLower(str(a["sub2_name"])),
+			strings.ToLower(str(a["sub3_name"])),
+			strings.ToLower(str(a["sub4_name"])),
+		}
+		critCount := 0
+		usefulCount := 0
+		for _, s := range subs {
+			if s == "" {
+				continue
+			}
+			if strings.Contains(s, "crit") {
+				critCount++
+				usefulCount++
+			} else if strings.Contains(s, "atk_") || strings.Contains(s, "enerr") || strings.Contains(s, "elemas") {
+				usefulCount++
+			}
+		}
+		score += critCount * 12
+		score += (usefulCount - critCount) * 4
+		if critCount == 0 {
+			reasons = append(reasons, "치명타 부옵션 없음")
+		}
+
+		// 4. Level investment
+		score += min(level, 20)
+
+		// 5. Rarity penalty
+		if rarity > 0 && rarity <= 3 {
+			score -= 25
+			reasons = append(reasons, fmt.Sprintf("%d성 성유물", rarity))
+		} else if rarity == 4 {
+			score -= 10
+			reasons = append(reasons, "4성 성유물")
+		}
+
+		// Threshold: score < 30 = discard candidate
+		if score < 30 {
+			candidates = append(candidates, discardCandidate{
+				Artifact: a,
+				Score:    score,
+				Reasons:  reasons,
+			})
+		}
+	}
+
+	// Sort by score ascending (worst first)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Score < candidates[j].Score
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"candidates": candidates,
+		"total":      len(artifacts),
+		"analyzed":   len(artifacts) - countEquipped(artifacts),
+	})
+}
+
+func countEquipped(artifacts []map[string]interface{}) int {
+	n := 0
+	for _, a := range artifacts {
+		if str(a["equipped_by"]) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func handleBatchDeleteArtifacts(w http.ResponseWriter, r *http.Request) {
+	uid := getUserID(r)
+	var body struct {
+		IDs []int `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"invalid body"}`, 400)
+		return
+	}
+	if len(body.IDs) == 0 {
+		http.Error(w, `{"error":"no ids provided"}`, 400)
+		return
+	}
+	if len(body.IDs) > 200 {
+		http.Error(w, `{"error":"max 200 at once"}`, 400)
+		return
+	}
+
+	stmts := []string{}
+	for _, id := range body.IDs {
+		stmts = append(stmts, fmt.Sprintf(
+			"DELETE FROM artifacts WHERE id = %d AND user_id = %s", id, uid,
+		))
+	}
+	_, err := rqliteExec(stmts)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"deleted": len(body.IDs),
+	})
+}
+
 func handleListWeapons(w http.ResponseWriter, r *http.Request) {
 	uid := getUserID(r)
 	allowed := map[string]string{
@@ -1048,9 +1282,17 @@ func handleImportGOOD(w http.ResponseWriter, rawBody []byte, uid string) {
 		s2k, s2v := sub(1)
 		s3k, s3v := sub(2)
 		s4k, s4v := sub(3)
+		lockVal := 0
+		if a.Lock {
+			lockVal = 1
+		}
+		rarity := a.Rarity
+		if rarity == 0 {
+			rarity = 5
+		}
 		rqliteExec([]string{fmt.Sprintf(
-			`INSERT INTO artifacts (name,set_name,slot,level,main_stat_type,main_stat_value,sub1_name,sub1_value,sub1_rolls,sub2_name,sub2_value,sub2_rolls,sub3_name,sub3_value,sub3_rolls,sub4_name,sub4_value,sub4_rolls,equipped_by,icon,user_id) VALUES ('%s','%s','%s',%d,'%s','','%s','%s',0,'%s','%s',0,'%s','%s',0,'%s','%s',0,'%s','',%s)`,
-			esc(name), esc(a.SetKey), esc(a.SlotKey), a.Level, esc(a.MainStatKey),
+			`INSERT INTO artifacts (name,set_name,slot,level,rarity,lock,main_stat_type,main_stat_value,sub1_name,sub1_value,sub1_rolls,sub2_name,sub2_value,sub2_rolls,sub3_name,sub3_value,sub3_rolls,sub4_name,sub4_value,sub4_rolls,equipped_by,icon,user_id) VALUES ('%s','%s','%s',%d,%d,%d,'%s','','%s','%s',0,'%s','%s',0,'%s','%s',0,'%s','%s',0,'%s','',%s)`,
+			esc(name), esc(a.SetKey), esc(a.SlotKey), a.Level, rarity, lockVal, esc(a.MainStatKey),
 			esc(s1k), esc(s1v), esc(s2k), esc(s2v),
 			esc(s3k), esc(s3v), esc(s4k), esc(s4v),
 			esc(a.Location), uid,

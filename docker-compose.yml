@@ -31,6 +31,7 @@ services:
       - ./scanner.html:/app/static/scanner.html:ro
       - ./planner.html:/app/static/planner.html:ro
       - ./abyss.html:/app/static/abyss.html:ro
+      - ./smart-discard.html:/app/static/smart-discard.html:ro
       - ./css:/app/static/css:ro
       - ./js:/app/static/js:ro
       - ./assets:/app/static/assets:ro
