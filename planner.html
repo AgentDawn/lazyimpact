@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LazyImpact | Planner</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__inner">
+    <div style="display:flex;align-items:center;gap:2rem;">
+      <a href="index.html" class="nav__brand">LazyImpact</a>
+      <ul class="nav__links">
+        <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
+        <li><a href="characters.html" class="nav__link" data-i18n="nav.characters">캐릭터</a></li>
+        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
+        <li><a href="artifacts.html" class="nav__link" data-i18n="nav.artifacts">성유물</a></li>
+        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
+        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
+        <li><a href="planner.html" class="nav__link nav__link--active">Planner</a></li>
+        <li><a href="abyss.html" class="nav__link">나선비경</a></li>
+        <li><a href="scanner.html" class="nav__link" data-i18n="nav.scanner">스캐너</a></li>
+      </ul>
+    </div>
+    <div class="nav__actions">
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">settings</span></button>
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">account_circle</span></button>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="artifacts-header" style="margin-bottom:2rem">
+    <div>
+      <h1>Daily Planner</h1>
+      <p>환상극 대비 + 일일 레진 계획 + 주간 기행</p>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:2rem">
+    <!-- Theater Prep -->
+    <section class="card card--container" id="theater-prep">
+      <div class="section-title">환상극 대비 추천</div>
+      <button class="btn-primary" id="btn-theater-optimize" style="margin-bottom:1rem">환상극 최적화 (DFS 완전탐색)</button>
+      <div id="theater-optimize-progress" style="display:none"></div>
+      <div id="theater-prep-content">
+        <div class="empty-state">
+          <span class="material-symbols-outlined">hourglass_empty</span>
+          <p>분석 중...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Daily Resin Plan -->
+    <section class="card card--low">
+      <div class="section-title">오늘의 레진 계획 <span style="color:var(--primary);font-size:0.875rem;font-weight:700" id="resin-display">160/160</span></div>
+      <div id="daily-plan">
+        <div class="empty-state">
+          <span class="material-symbols-outlined">hourglass_empty</span>
+          <p>계산 중...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Weekly BP -->
+    <section class="card card--container">
+      <div class="section-title">주간 기행 미션</div>
+      <div id="weekly-bp"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer__inner">
+    <ul class="footer__links">
+      <li><a href="#">Documentation</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Changelog</a></li>
+    </ul>
+    <p class="footer__copy" data-i18n="footer.disclaimer">이론 계산 목적으로 제공됩니다. HoYoverse와 관련이 없습니다.</p>
+  </div>
+</footer>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+<script src="js/planner.js"></script>
+</body>
+</html>

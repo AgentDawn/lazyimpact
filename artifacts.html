@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LazyImpact | Artifacts Inventory</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav__inner">
+    <div style="display:flex;align-items:center;gap:2rem;">
+      <a href="index.html" class="nav__brand">LazyImpact</a>
+      <ul class="nav__links">
+        <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
+        <li><a href="characters.html" class="nav__link" data-i18n="nav.characters">캐릭터</a></li>
+        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
+        <li><a href="artifacts.html" class="nav__link nav__link--active" data-i18n="nav.artifacts">성유물</a></li>
+        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
+        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
+        <li><a href="planner.html" class="nav__link">Planner</a></li>
+        <li><a href="abyss.html" class="nav__link">나선비경</a></li>
+        <li><a href="scanner.html" class="nav__link" data-i18n="nav.scanner">스캐너</a></li>
+      </ul>
+    </div>
+    <div class="nav__actions">
+      <button class="nav__icon-btn">
+        <span class="material-symbols-outlined">settings</span>
+      </button>
+      <button class="nav__icon-btn">
+        <span class="material-symbols-outlined">account_circle</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main">
+  <div class="layout-sidebar">
+
+    <!-- Sidebar Filters -->
+    <aside class="sidebar">
+      <div class="sidebar__sticky">
+        <div class="filter-card">
+          <div class="filter-header">
+            <h2 data-i18n="art.filters">Filters</h2>
+            <button data-i18n="art.clearall">Clear All</button>
+          </div>
+
+          <!-- Artifact Set -->
+          <div class="filter-group">
+            <label data-i18n="art.set">Artifact Set</label>
+            <div class="filter-search">
+              <input type="text" placeholder="Search sets..." data-i18n="art.search"/>
+              <span class="material-symbols-outlined">search</span>
+            </div>
+          </div>
+
+          <!-- Slot -->
+          <div class="filter-group">
+            <label data-i18n="art.slot">Slot</label>
+            <div class="filter-slots">
+              <button class="filter-slot">
+                <span class="material-symbols-outlined">local_florist</span>
+              </button>
+              <button class="filter-slot filter-slot--active">
+                <span class="material-symbols-outlined">flight</span>
+              </button>
+              <button class="filter-slot">
+                <span class="material-symbols-outlined">hourglass_empty</span>
+              </button>
+              <button class="filter-slot">
+                <span class="material-symbols-outlined">wine_bar</span>
+              </button>
+              <button class="filter-slot">
+                <span class="material-symbols-outlined">crown</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Main Stat -->
+          <div class="filter-group">
+            <label data-i18n="art.mainstat">Main Stat</label>
+            <select class="filter-select">
+              <option>전체</option>
+              <option>공격력%</option>
+              <option>치명타 확률</option>
+              <option>치명타 피해</option>
+              <option>원소 마스터리</option>
+            </select>
+          </div>
+
+          <!-- Desired Substats -->
+          <div class="filter-group">
+            <label data-i18n="art.substats">Desired Substats</label>
+            <div class="filter-tags">
+              <span class="filter-tag filter-tag--active">치명타 확률</span>
+              <span class="filter-tag filter-tag--active">치명타 피해</span>
+              <span class="filter-tag">공격력%</span>
+              <span class="filter-tag">원충%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Archive Total -->
+        <div class="archive-total">
+          <p class="archive-total__label" data-i18n="art.total">Archive Total</p>
+          <p class="archive-total__value" id="archive-total">—</p>
+          <p class="archive-total__sub">+20 성유물: <span id="archive-lv20">—</span></p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content Area -->
+    <section class="content-area">
+
+      <!-- Header & Sort -->
+      <div class="artifacts-header">
+        <div>
+          <h1 data-i18n="art.title">Artifacts Inventory</h1>
+          <p data-i18n="art.subtitle">Manage and optimize your celestial equipment</p>
+        </div>
+        <div class="sort-bar">
+          <span class="sort-bar__label" data-i18n="art.sortby">Sort By</span>
+          <div class="sort-tabs">
+            <button class="sort-tab sort-tab--active" data-i18n="art.quality">Quality</button>
+            <button class="sort-tab" data-i18n="art.newest">Newest</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Artifact Grid -->
+      <div class="artifact-grid" id="artifact-grid">
+        <!-- Dynamic from API -->
+      </div>
+
+      <div class="load-more">
+        <p class="load-more__count" id="artifact-count-display">—</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- FAB -->
+<button class="fab">
+  <span class="material-symbols-outlined">calculate</span>
+  <span class="fab__tooltip">Batch Optimize</span>
+</button>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer__inner">
+    <ul class="footer__links">
+      <li><a href="#">Documentation</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Changelog</a></li>
+    </ul>
+    <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
+  </div>
+</footer>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LazyImpact | Home</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__inner">
+    <div style="display:flex;align-items:center;gap:2rem;">
+      <a href="index.html" class="nav__brand">LazyImpact</a>
+      <ul class="nav__links">
+        <li><a href="index.html" class="nav__link nav__link--active" data-i18n="nav.home">홈</a></li>
+        <li><a href="characters.html" class="nav__link" data-i18n="nav.characters">캐릭터</a></li>
+        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
+        <li><a href="artifacts.html" class="nav__link" data-i18n="nav.artifacts">성유물</a></li>
+        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
+        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
+        <li><a href="planner.html" class="nav__link">Planner</a></li>
+        <li><a href="abyss.html" class="nav__link">나선비경</a></li>
+        <li><a href="scanner.html" class="nav__link" data-i18n="nav.scanner">스캐너</a></li>
+      </ul>
+    </div>
+    <div class="nav__actions">
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">settings</span></button>
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">account_circle</span></button>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <!-- Hero -->
+  <section style="text-align:center;padding:4rem 0 3rem">
+    <h1 style="font-size:2.5rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:0.75rem">LazyImpact <span style="color:var(--primary)">V2</span></h1>
+    <p style="color:var(--on-surface-variant);font-size:1rem;max-width:36rem;margin:0 auto" data-i18n="home.subtitle">Optimize your builds, manage artifacts, and plan team compositions for maximum damage output.</p>
+  </section>
+
+  <!-- Import/Export -->
+  <div style="display:flex;gap:1rem;justify-content:center;margin-bottom:1rem">
+    <button class="btn-chip" id="btn-export" style="display:flex;align-items:center;gap:0.5rem">
+      <span class="material-symbols-outlined" style="font-size:1rem">download</span> <span data-i18n="home.export">Export Data</span>
+    </button>
+    <button class="btn-chip" id="btn-import" style="display:flex;align-items:center;gap:0.5rem">
+      <span class="material-symbols-outlined" style="font-size:1rem">upload</span> <span data-i18n="home.import">Import Data</span>
+    </button>
+    <input type="file" id="import-file" accept=".json" style="display:none"/>
+  </div>
+
+  <!-- Quick Access Cards -->
+  <div id="home-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1.5rem;margin-top:1rem">
+
+    <a href="characters.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--primary)">person</span>
+        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.characters">Characters</span> <span id="home-char-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
+      </div>
+      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.characters.desc">View character builds, stats, and run the artifact optimizer.</p>
+      <div id="home-char-avatars" style="display:flex;gap:0.5rem;margin-top:1rem"></div>
+    </a>
+
+    <a href="artifacts.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--secondary)">diamond</span>
+        <h2 style="font-size:1.125rem;font-weight:700" data-i18n="home.artifacts">Artifacts</h2>
+      </div>
+      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.artifacts.desc">Browse, filter, and evaluate your artifact collection.</p>
+      <div style="margin-top:1rem">
+        <span id="home-artifact-count" style="font-size:2rem;font-weight:800;color:var(--on-primary-container)">—</span>
+        <span style="font-size:0.75rem;color:var(--on-surface-variant);margin-left:0.5rem" data-i18n="home.artifacts.total">total artifacts</span>
+      </div>
+    </a>
+
+    <a href="weapons.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--tertiary)">swords</span>
+        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.weapons">Weapons</span> <span id="home-weapon-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
+      </div>
+      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.weapons.desc">Manage your weapon inventory and refinements.</p>
+    </a>
+
+    <a href="teams.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--error)">groups</span>
+        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.teams">Teams</span> <span id="home-team-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
+      </div>
+      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.teams.desc">Build and manage your Abyss-ready team compositions.</p>
+    </a>
+
+    <a href="builds.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--primary-fixed)">bookmark</span>
+        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.builds">Saved Builds</span> <span id="home-build-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
+      </div>
+      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.builds.desc">Access your saved and optimized loadouts.</p>
+    </a>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer__inner">
+    <ul class="footer__links">
+      <li><a href="#">Documentation</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Changelog</a></li>
+    </ul>
+    <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
+  </div>
+</footer>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

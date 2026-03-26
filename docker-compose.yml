@@ -1,0 +1,42 @@
+services:
+  rqlite:
+    image: rqlite/rqlite:8.36.2
+    ports:
+      - "4001:4001"
+    volumes:
+      - rqlite-data:/rqlite/file/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:4001/readyz?noleader"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  api:
+    build: ./server
+    ports:
+      - "3000:3000"
+    environment:
+      - RQLITE_URL=http://rqlite:4001
+      - PORT=3000
+    volumes:
+      - ./index.html:/app/static/index.html:ro
+      - ./characters.html:/app/static/characters.html:ro
+      - ./artifacts.html:/app/static/artifacts.html:ro
+      - ./weapons.html:/app/static/weapons.html:ro
+      - ./teams.html:/app/static/teams.html:ro
+      - ./builds.html:/app/static/builds.html:ro
+      - ./login.html:/app/static/login.html:ro
+      - ./theater.html:/app/static/theater.html:ro
+      - ./scanner.html:/app/static/scanner.html:ro
+      - ./planner.html:/app/static/planner.html:ro
+      - ./abyss.html:/app/static/abyss.html:ro
+      - ./css:/app/static/css:ro
+      - ./js:/app/static/js:ro
+      - ./assets:/app/static/assets:ro
+    depends_on:
+      rqlite:
+        condition: service_healthy
+
+volumes:
+  rqlite-data:

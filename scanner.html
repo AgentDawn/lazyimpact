@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LazyImpact | Scanner</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav__inner">
+    <div style="display:flex;align-items:center;gap:2rem;">
+      <a href="index.html" class="nav__brand">LazyImpact</a>
+      <ul class="nav__links">
+        <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
+        <li><a href="characters.html" class="nav__link" data-i18n="nav.characters">캐릭터</a></li>
+        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
+        <li><a href="artifacts.html" class="nav__link" data-i18n="nav.artifacts">성유물</a></li>
+        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
+        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
+        <li><a href="planner.html" class="nav__link">Planner</a></li>
+        <li><a href="scanner.html" class="nav__link nav__link--active" data-i18n="nav.scanner">스캐너</a></li>
+      </ul>
+    </div>
+    <div class="nav__actions">
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">settings</span></button>
+      <button class="nav__icon-btn"><span class="material-symbols-outlined">account_circle</span></button>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="artifacts-header" style="margin-bottom:2rem">
+    <div>
+      <h1 data-i18n="scanner.title">Scanner — Irminsul</h1>
+      <p data-i18n="scanner.subtitle">Import your game data using the Irminsul packet capture scanner</p>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(20rem,1fr));gap:2rem">
+
+    <!-- Irminsul Info Card -->
+    <div class="card card--container">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem">
+        <span class="material-symbols-outlined" style="font-size:2.5rem;color:var(--primary)">radar</span>
+        <div>
+          <h2 style="font-size:1.125rem;font-weight:700">Irminsul</h2>
+          <p style="font-size:0.75rem;color:var(--on-surface-variant)">Packet Capture Scanner</p>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1rem;font-size:0.875rem;color:var(--on-surface-variant)">
+        <p>Irminsul은 패킷 캡처 기반의 원신 데이터 스캐너입니다. OCR 방식보다 빠르고 정확하게 캐릭터, 아티팩트, 무기 데이터를 추출합니다.</p>
+        <div style="display:flex;flex-direction:column;gap:0.5rem">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="material-symbols-outlined" style="font-size:1rem;color:var(--secondary)">check_circle</span>
+            <span>GOOD 포맷 JSON 내보내기 지원</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="material-symbols-outlined" style="font-size:1rem;color:var(--secondary)">check_circle</span>
+            <span>캐릭터 / 아티팩트 / 무기 일괄 스캔</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="material-symbols-outlined" style="font-size:1rem;color:var(--secondary)">check_circle</span>
+            <span>패킷 캡처 방식 (관리자 권한 필요)</span>
+          </div>
+        </div>
+        <a href="https://github.com/konkers/irminsul" target="_blank" rel="noopener" class="btn-primary" style="text-align:center;margin-top:0.5rem;text-decoration:none;display:block">
+          GitHub에서 다운로드
+        </a>
+      </div>
+    </div>
+
+    <!-- Import Card -->
+    <div class="card card--container">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem">
+        <span class="material-symbols-outlined" style="font-size:2.5rem;color:var(--secondary)">upload_file</span>
+        <div>
+          <h2 style="font-size:1.125rem;font-weight:700">Import Data</h2>
+          <p style="font-size:0.75rem;color:var(--on-surface-variant)">GOOD 포맷 JSON 파일 업로드</p>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:1rem">
+        <p style="font-size:0.875rem;color:var(--on-surface-variant)">Irminsul에서 내보낸 <code style="background:var(--surface-highest);padding:0.125rem 0.375rem;border-radius:var(--r-sm);font-size:0.8125rem">.json</code> 파일을 선택하세요.</p>
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" style="border:2px dashed var(--outline-variant);border-radius:var(--r-xl);padding:3rem;text-align:center;cursor:pointer;transition:all 0.2s">
+          <span class="material-symbols-outlined" style="font-size:3rem;color:var(--outline);margin-bottom:0.5rem;display:block">cloud_upload</span>
+          <p style="font-size:0.875rem;color:var(--on-surface-variant)">클릭하거나 파일을 드래그하세요</p>
+          <p style="font-size:0.75rem;color:var(--outline);margin-top:0.25rem">GOOD 포맷 (.json)</p>
+          <input type="file" id="scanner-file" accept=".json" style="display:none"/>
+        </div>
+
+        <!-- Import Result -->
+        <div id="import-result" style="display:none;background:var(--surface-highest);border-radius:var(--r-md);padding:1rem"></div>
+      </div>
+    </div>
+
+    <!-- How To Use -->
+    <div class="card card--low" style="grid-column:1/-1">
+      <h2 style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;color:var(--on-surface-variant);margin-bottom:1.5rem">사용 방법</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:2rem">
+        <div style="display:flex;gap:1rem">
+          <div style="width:2rem;height:2rem;border-radius:50%;background:var(--primary-container);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:700;flex-shrink:0">1</div>
+          <div>
+            <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem">Irminsul 다운로드</h3>
+            <p style="font-size:0.75rem;color:var(--on-surface-variant)">GitHub에서 최신 릴리즈를 다운받아 관리자 권한으로 실행합니다.</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <div style="width:2rem;height:2rem;border-radius:50%;background:var(--primary-container);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:700;flex-shrink:0">2</div>
+          <div>
+            <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem">원신 시작과 함께 스캔</h3>
+            <p style="font-size:0.75rem;color:var(--on-surface-variant)">Irminsul을 먼저 실행한 후 원신을 시작하면 자동으로 데이터를 캡처합니다.</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <div style="width:2rem;height:2rem;border-radius:50%;background:var(--primary-container);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:700;flex-shrink:0">3</div>
+          <div>
+            <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem">GOOD JSON 내보내기</h3>
+            <p style="font-size:0.75rem;color:var(--on-surface-variant)">스캔 완료 후 GOOD 포맷으로 JSON 파일을 내보냅니다.</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <div style="width:2rem;height:2rem;border-radius:50%;background:var(--secondary-container);color:var(--on-secondary);display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:700;flex-shrink:0">4</div>
+          <div>
+            <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem">여기서 Import</h3>
+            <p style="font-size:0.75rem;color:var(--on-surface-variant)">내보낸 JSON 파일을 위 Import 영역에 업로드하면 데이터가 자동으로 등록됩니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer__inner">
+    <ul class="footer__links">
+      <li><a href="#">Documentation</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Changelog</a></li>
+    </ul>
+    <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
+  </div>
+</footer>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+<script>
+  // Scanner page specific logic
+  document.addEventListener('DOMContentLoaded', () => {
+    const dropZone = document.getElementById('drop-zone')
+    const fileInput = document.getElementById('scanner-file')
+    const resultDiv = document.getElementById('import-result')
+    if (!dropZone || !fileInput) return
+
+    dropZone.addEventListener('click', () => fileInput.click())
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      dropZone.style.borderColor = 'var(--primary)'
+      dropZone.style.background = 'rgba(175,198,255,0.05)'
+    })
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.borderColor = ''
+      dropZone.style.background = ''
+    })
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault()
+      dropZone.style.borderColor = ''
+      dropZone.style.background = ''
+      const file = e.dataTransfer.files[0]
+      if (file) handleFile(file)
+    })
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) handleFile(e.target.files[0])
+      fileInput.value = ''
+    })
+
+    async function handleFile(file) {
+      resultDiv.style.display = 'block'
+      resultDiv.innerHTML = '<p style="color:var(--on-surface-variant);font-size:0.875rem">Importing...</p>'
+
+      try {
+        const text = await file.text()
+        const data = JSON.parse(text)
+
+        if (data.format !== 'GOOD') {
+          throw new Error('GOOD 포맷이 아닙니다. Irminsul에서 GOOD 포맷으로 내보내세요.')
+        }
+
+        const res = await fetch('/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: text,
+        })
+
+        if (res.status === 401) {
+          window.location.href = '/login.html'
+          return
+        }
+        if (!res.ok) throw new Error('Import 실패')
+
+        const result = await res.json()
+        resultDiv.innerHTML = `
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+            <span class="material-symbols-outlined" style="color:var(--secondary)">check_circle</span>
+            <span style="font-weight:700;font-size:0.875rem">Import 완료!</span>
+          </div>
+          <div style="display:flex;gap:2rem;font-size:0.875rem;color:var(--on-surface-variant)">
+            <span>캐릭터: <strong style="color:var(--on-surface)">${result.characters || 0}</strong></span>
+            <span>아티팩트: <strong style="color:var(--on-surface)">${result.artifacts || 0}</strong></span>
+            <span>무기: <strong style="color:var(--on-surface)">${result.weapons || 0}</strong></span>
+          </div>`
+      } catch (err) {
+        resultDiv.innerHTML = `
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="material-symbols-outlined" style="color:var(--error)">error</span>
+            <span style="color:var(--error);font-size:0.875rem">${err.message}</span>
+          </div>`
+      }
+    }
+  })
+</script>
+</body>
+</html>

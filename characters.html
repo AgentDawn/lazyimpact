@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LazyImpact | Character Build</title>
+  <link rel="stylesheet" href="css/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav__inner">
+    <div style="display:flex;align-items:center;gap:2rem;">
+      <a href="index.html" class="nav__brand">LazyImpact</a>
+      <ul class="nav__links">
+        <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
+        <li><a href="characters.html" class="nav__link nav__link--active" data-i18n="nav.characters">캐릭터</a></li>
+        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
+        <li><a href="artifacts.html" class="nav__link" data-i18n="nav.artifacts">성유물</a></li>
+        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
+        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
+        <li><a href="planner.html" class="nav__link">Planner</a></li>
+        <li><a href="abyss.html" class="nav__link">나선비경</a></li>
+        <li><a href="scanner.html" class="nav__link" data-i18n="nav.scanner">스캐너</a></li>
+      </ul>
+    </div>
+    <div class="nav__actions">
+      <button class="nav__icon-btn">
+        <span class="material-symbols-outlined">settings</span>
+      </button>
+      <button class="nav__icon-btn">
+        <span class="material-symbols-outlined">account_circle</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main">
+  <div class="grid-layout">
+
+    <!-- Left Column -->
+    <div class="col">
+
+      <!-- Character Portrait Card -->
+      <section class="card card--low card--glow">
+        <div class="character-header">
+          <div class="character-portrait">
+            <img alt="Raiden Shogun" src="assets/chars/raiden.png"/>
+            <div class="character-portrait__level">LVL 90/90</div>
+          </div>
+          <div class="character-info">
+            <div>
+              <h1 class="character-name">Raiden Shogun</h1>
+              <p class="character-subtitle">Electro Archon &bull; Polearm</p>
+            </div>
+            <div class="weapon-slot">
+              <div class="weapon-slot__icon">
+                <img alt="Engulfing Lightning" src="assets/weapons/engulfing.png"/>
+              </div>
+              <div>
+                <div class="weapon-slot__label" data-i18n="char.weapon">Equipped Weapon</div>
+                <div class="weapon-slot__name">Engulfing Lightning</div>
+              </div>
+              <button class="weapon-slot__swap">
+                <span class="material-symbols-outlined" style="font-size:1.125rem">swap_horiz</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Panel -->
+      <section class="card card--container">
+        <div class="section-title">
+          <span data-i18n="char.attributes">Character Attributes</span>
+          <span class="material-symbols-outlined" style="font-size:1rem;color:var(--on-surface-variant)">info</span>
+        </div>
+        <div class="stats-grid">
+          <div>
+            <div class="stat__label" data-i18n="char.hp">Health Points</div>
+            <div class="stat__value">19,445 <span class="stat__diff">-240</span></div>
+          </div>
+          <div>
+            <div class="stat__label" data-i18n="char.atk">Attack Power</div>
+            <div class="stat__value">2,104</div>
+          </div>
+          <div>
+            <div class="stat__label" data-i18n="char.critrate">Crit Rate</div>
+            <div class="stat__value">64.2<span class="stat__unit">%</span></div>
+          </div>
+          <div>
+            <div class="stat__label" data-i18n="char.critdmg">Crit Damage</div>
+            <div class="stat__value">148.5<span class="stat__unit">%</span></div>
+          </div>
+          <div>
+            <div class="stat__label" data-i18n="char.er">Energy Recharge</div>
+            <div class="stat__value stat__value--highlight">274.1<span class="stat__unit">%</span></div>
+          </div>
+          <div>
+            <div class="stat__label" data-i18n="char.em">Elemental Mastery</div>
+            <div class="stat__value">105</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Optimization Constraints -->
+      <section class="card card--low">
+        <div class="section-title" data-i18n="char.constraints">최적화 조건</div>
+        <div>
+          <div class="control-group">
+            <div class="control__header">
+              <span class="control__header-label" data-i18n="char.target">목표 계산</span>
+              <span class="control__header-value">격화 피해</span>
+            </div>
+            <div class="select-field">
+              <span>오의: 무상의 일태도 (초격)</span>
+              <span class="material-symbols-outlined">expand_more</span>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="range-header">
+              <span class="range-header__label" data-i18n="char.min.er">최소 원충</span>
+              <span class="range-header__value">250%</span>
+            </div>
+            <input type="range" min="100" max="350" value="250" id="range-er"/>
+          </div>
+
+          <div class="control-group">
+            <div class="range-header">
+              <span class="range-header__label" data-i18n="char.min.cr">최소 치확</span>
+              <span class="range-header__value">60%</span>
+            </div>
+            <input type="range" min="5" max="100" value="60" id="range-cr"/>
+          </div>
+
+          <button class="btn-primary" id="btn-optimize" data-i18n="char.run">옵티마이저 실행</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right Column: Results -->
+    <div class="col col--results">
+      <div class="results-header">
+        <h2><span data-i18n="char.results">최적화 결과</span> <span class="results-header__count"></span></h2>
+        <div class="results-header__actions">
+          <button class="btn-chip">필터</button>
+          <button class="btn-chip">정렬: DPS</button>
+        </div>
+      </div>
+
+      <!-- Dynamic results from API -->
+      <div id="results-list"></div>
+
+      <div class="empty-state">
+        <span class="material-symbols-outlined">database</span>
+        <p>성유물을 스캔하여 더 효율적인<br/>조합을 찾아보세요.</p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer__inner">
+    <ul class="footer__links">
+      <li><a href="#">Documentation</a></li>
+      <li><a href="#">Privacy Policy</a></li>
+      <li><a href="#">Changelog</a></li>
+    </ul>
+    <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
+  </div>
+</footer>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
