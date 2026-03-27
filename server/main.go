@@ -46,6 +46,8 @@ func main() {
 	mux.HandleFunc("POST /api/artifacts", auth(handleCreateArtifact))
 	mux.HandleFunc("DELETE /api/artifacts/{id}", auth(handleDeleteArtifact))
 	mux.HandleFunc("GET /api/artifacts/smart-discard", auth(handleSmartDiscard))
+	mux.HandleFunc("GET /api/artifacts/{id}/character-scores", auth(handleArtifactCharScores))
+	mux.HandleFunc("PUT /api/artifacts/{id}/dismiss", auth(handleToggleDismiss))
 	mux.HandleFunc("POST /api/artifacts/batch-delete", auth(handleBatchDeleteArtifacts))
 
 	mux.HandleFunc("GET /api/weapons", auth(handleListWeapons))
@@ -87,7 +89,12 @@ func main() {
 
 	// Static files
 	static := http.FileServer(http.Dir("/app/static"))
-	mux.Handle("/", static)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		static.ServeHTTP(w, r)
+	})
 
 	log.Printf("Server listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
@@ -138,6 +145,7 @@ func initDB() {
 			level INTEGER DEFAULT 0,
 			rarity INTEGER DEFAULT 5,
 			lock INTEGER DEFAULT 0,
+			dismissed INTEGER DEFAULT 0,
 			main_stat_type TEXT,
 			main_stat_value TEXT,
 			sub1_name TEXT, sub1_value TEXT, sub1_rolls INTEGER DEFAULT 0,
@@ -255,12 +263,10 @@ func initDB() {
 	// Migrations: add rarity/lock columns to artifacts for existing DBs
 	rqliteExec([]string{`ALTER TABLE artifacts ADD COLUMN rarity INTEGER DEFAULT 5`})
 	rqliteExec([]string{`ALTER TABLE artifacts ADD COLUMN lock INTEGER DEFAULT 0`})
+	rqliteExec([]string{`ALTER TABLE artifacts ADD COLUMN dismissed INTEGER DEFAULT 0`})
 
-	// Seed shared demo data (user_id=0) if empty
-	result, _ := rqliteQuery("SELECT COUNT(*) AS cnt FROM characters")
-	if getCount(result) == 0 {
-		seed()
-	}
+	// Always ensure character dictionary is fully seeded (uses INSERT OR IGNORE)
+	seed()
 
 	// Seed theater seasons if empty
 	theaterResult, _ := rqliteQuery("SELECT COUNT(*) AS cnt FROM theater_seasons")
@@ -285,32 +291,35 @@ func seed() {
 	log.Println("Seeding character name dictionary...")
 	names := []struct{ en, ko string }{
 		{"Amber", "엠버"}, {"Xiangling", "향릉"}, {"Bennett", "베넷"}, {"Diluc", "다이루크"},
-		{"Klee", "클레"}, {"Yanfei", "신염"}, {"Hu Tao", "호두"}, {"Yoimiya", "요이미야"},
+		{"Klee", "클레"}, {"Yanfei", "연비"}, {"Hu Tao", "호두"}, {"Yoimiya", "요이미야"},
 		{"Thoma", "토마"}, {"Dehya", "데히야"}, {"Lyney", "리니"}, {"Chevreuse", "슈브르즈"},
 		{"Gaming", "가명"}, {"Arlecchino", "아를레키노"}, {"Mavuika", "마비카"}, {"Columbina", "콜롬비나"},
 		{"Barbara", "바바라"}, {"Xingqiu", "행추"}, {"Mona", "모나"}, {"Tartaglia", "타르탈리아"},
-		{"Kokomi", "산고노미야 코코미"}, {"Ayato", "카미사토 아야토"}, {"Yelan", "야란"}, {"Candace", "캔디스"},
+		{"Sangonomiya Kokomi", "산고노미야 코코미"}, {"Kokomi", "산고노미야 코코미"}, {"Kamisato Ayato", "카미사토 아야토"}, {"Ayato", "카미사토 아야토"}, {"Yelan", "야란"}, {"Candace", "캔디스"},
 		{"Nilou", "닐루"}, {"Neuvillette", "느비예트"}, {"Furina", "푸리나"}, {"Sigewinne", "시그윈"},
-		{"Mualani", "말라니"}, {"Dahlia", "달리아"}, {"Lisa", "리사"}, {"Fischl", "피슐"},
+		{"Mualani", "말라니"}, {"Dahlia", "달리아"}, {"Lisa", "리사"}, {"Fischl", "피슬"},
 		{"Beidou", "북두"}, {"Keqing", "각청"}, {"Kujou Sara", "쿠조 사라"},
 		{"Raiden Shogun", "라이덴 쇼군"}, {"Yae Miko", "야에 미코"}, {"Kuki Shinobu", "쿠키 시노부"},
 		{"Dori", "도리"}, {"Cyno", "사이노"}, {"Sethos", "세토스"}, {"Clorinde", "클로린드"},
 		{"Ororon", "올로룬"}, {"Iansan", "얀사"}, {"Varesa", "바레사"},
 		{"Qiqi", "치치"}, {"Chongyun", "중운"}, {"Diona", "디오나"}, {"Ganyu", "감우"},
-		{"Rosaria", "로자리아"}, {"Shenhe", "신학"}, {"Ayaka", "카미사토 아야카"}, {"Aloy", "에일로이"},
+		{"Rosaria", "로자리아"}, {"Shenhe", "신학"}, {"Kamisato Ayaka", "카미사토 아야카"}, {"Ayaka", "카미사토 아야카"}, {"Aloy", "에일로이"}, {"Eula", "유라"},
 		{"Layla", "레일라"}, {"Mika", "미카"}, {"Freminet", "프레미네"}, {"Wriothesley", "라이오슬리"},
 		{"Charlotte", "샤를롯"}, {"Citlali", "시틀라리"},
 		{"Collei", "콜레이"}, {"Tighnari", "타이나리"}, {"Nahida", "나히다"}, {"Yaoyao", "요요"},
 		{"Alhaitham", "알하이탐"}, {"Kaveh", "카베"}, {"Baizhu", "백출"}, {"Kirara", "키라라"},
 		{"Emilie", "에밀리"}, {"Kinich", "키니치"}, {"Xilonen", "실로닌"},
 		{"Sucrose", "설탕"}, {"Jean", "진"}, {"Venti", "벤티"}, {"Xiao", "소"},
-		{"Kaedehara Kazuha", "카에데하라 카즈하"}, {"Sayu", "사유"}, {"Heizou", "시카노인 헤이조"},
-		{"Faruzan", "파루잔"}, {"Wanderer", "방랑자"}, {"Lynette", "리넷"}, {"Lan Yan", "한운"},
+		{"Kaedehara Kazuha", "카에데하라 카즈하"}, {"Sayu", "사유"}, {"Shikanoin Heizou", "시카노인 헤이조"}, {"Heizou", "시카노인 헤이조"},
+		{"Faruzan", "파루잔"}, {"Wanderer", "방랑자"}, {"Lynette", "리넷"}, {"Xianyun", "한운"},
 		{"Chasca", "차스카"}, {"Yumemizuki Mizuki", "유메미즈키 미즈키"},
 		{"Kachina", "카치나"}, {"Noelle", "노엘"}, {"Zhongli", "종려"}, {"Albedo", "알베도"},
-		{"Gorou", "고로"}, {"Arataki Itto", "아라타키 이토"}, {"Xianyun", "한운"},
+		{"Gorou", "고로"}, {"Arataki Itto", "아라타키 이토"}, {"Itto", "아라타키 이토"},
 		{"Navia", "나비아"}, {"Chiori", "치오리"}, {"Ningguang", "응광"}, {"Razor", "레이저"},
-		{"Kaeya", "케이아"}, {"Xinyan", "신운"}, {"Yun Jin", "운근"},
+		{"Kaeya", "케이아"}, {"Xinyan", "신염"}, {"Yun Jin", "운근"},
+		{"Lan Yan", "남연"}, {"Skirk", "스커크"}, {"Nefer", "네페르"}, {"Zibai", "자백"},
+		{"Lauma", "라우마"}, {"Aino", "아이노"}, {"Ineffa", "이네파"}, {"Escoffier", "에스코피에"},
+		{"Ifa", "이파"}, {"Durin", "두린"}, {"Illuga", "일루가"}, {"Manekin", "마네킨"},
 	}
 	stmts := []string{}
 	for _, n := range names {
@@ -779,10 +788,18 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 	threshold := 35.0
 	if tStr := r.URL.Query().Get("threshold"); tStr != "" {
 		if t, err := strconv.ParseFloat(tStr, 64); err == nil {
-			if t >= 10 && t <= 80 {
+			if t >= 10 && t <= 100 {
 				threshold = t
 			}
 		}
+	}
+
+	// Load character name map (EN → KO) for display
+	nameResult, _ := rqliteQuery("SELECT name_en, name_ko FROM character_names")
+	nameRows := parseRows(nameResult)
+	charNameKo := map[string]string{}
+	for _, row := range nameRows {
+		charNameKo[str(row["name_en"])] = str(row["name_ko"])
 	}
 
 	type discardCandidate struct {
@@ -796,12 +813,10 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 	candidates := []discardCandidate{}
 
 	for _, a := range artifacts {
-		// Skip equipped
-		if str(a["equipped_by"]) != "" {
-			continue
-		}
-		// Skip locked
-		if intVal(a["lock"]) == 1 {
+		// Only 5-star + 4-star Instructor
+		rarity := intVal(a["rarity"])
+		if rarity == 0 { rarity = 5 }
+		if rarity < 5 && str(a["set_name"]) != "Instructor" {
 			continue
 		}
 
@@ -858,13 +873,25 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// 3. Substats (0-40): weight * 10 per sub
+			totalSubs := 0
+			usefulSubs := 0
 			for _, sk := range subKeys {
 				if sk == "" {
 					continue
 				}
-				if w, ok := weights[sk]; ok {
+				totalSubs++
+				if w, ok := weights[sk]; ok && w > 0 {
 					score += w * 10
+					usefulSubs++
 				}
+			}
+
+			// 4. Wasted upgrade penalty: leveled artifacts with useless subs get penalized
+			level := intVal(a["level"])
+			upgrades := float64(level / 4)
+			if upgrades > 0 && totalSubs > 0 {
+				wasteRatio := float64(totalSubs-usefulSubs) / float64(totalSubs)
+				score -= upgrades * wasteRatio * 2
 			}
 
 			percentScore := score // max is 100
@@ -908,22 +935,30 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Check crit substats
-			hasCrit := false
-			for _, sk := range subKeys {
-				if sk == "critRate_" || sk == "critDMG_" {
-					hasCrit = true
-					break
+			// Check crit substats — only relevant if best char actually needs crit
+			bestWeights := characterStatWeights[bestChar]
+			critNeeded := bestWeights["critRate_"] >= 0.5 || bestWeights["critDMG_"] >= 0.5
+			if critNeeded {
+				hasCrit := false
+				for _, sk := range subKeys {
+					if sk == "critRate_" || sk == "critDMG_" {
+						hasCrit = true
+						break
+					}
+				}
+				if !hasCrit {
+					reasons = append(reasons, "치명타 부옵 없음")
 				}
 			}
-			if !hasCrit {
-				reasons = append(reasons, "치명타 부옵 없음")
-			}
 
+			bestCharDisplay := bestChar
+			if ko := charNameKo[bestChar]; ko != "" {
+				bestCharDisplay = ko
+			}
 			candidates = append(candidates, discardCandidate{
 				Artifact:      a,
 				Score:         math.Round(bestScore*10) / 10,
-				BestCharacter: bestChar,
+				BestCharacter: bestCharDisplay,
 				BestCharScore: math.Round(bestScore*10) / 10,
 				Reasons:       reasons,
 			})
@@ -939,9 +974,123 @@ func handleSmartDiscard(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"candidates": candidates,
 		"total":      len(artifacts),
-		"analyzed":   len(artifacts) - countEquipped(artifacts),
+		"analyzed":   len(artifacts),
 		"threshold":  threshold,
 	})
+}
+
+func handleToggleDismiss(w http.ResponseWriter, r *http.Request) {
+	uid := getUserID(r)
+	id := r.PathValue("id")
+	// Toggle: if dismissed=0 → set 1, if 1 → set 0
+	_, err := rqliteExecParam(
+		"UPDATE artifacts SET dismissed = CASE WHEN dismissed = 1 THEN 0 ELSE 1 END WHERE id = ? AND user_id = ?", id, uid,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "toggled"})
+}
+
+func handleArtifactCharScores(w http.ResponseWriter, r *http.Request) {
+	uid := getUserID(r)
+	id := r.PathValue("id")
+	result, err := rqliteQueryParam("SELECT * FROM artifacts WHERE id = ? AND user_id = ?", id, uid)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	rows := parseRows(result)
+	if len(rows) == 0 {
+		http.Error(w, `{"error":"not found"}`, 404)
+		return
+	}
+	a := rows[0]
+	slot := str(a["slot"])
+	mainStat := str(a["main_stat_type"])
+	subKeys := []string{str(a["sub1_name"]), str(a["sub2_name"]), str(a["sub3_name"]), str(a["sub4_name"])}
+
+	// Load Korean names
+	nameResult, _ := rqliteQuery("SELECT name_en, name_ko FROM character_names")
+	nameRows := parseRows(nameResult)
+	charNameKo := map[string]string{}
+	for _, row := range nameRows {
+		charNameKo[str(row["name_en"])] = str(row["name_ko"])
+	}
+
+	type charScore struct {
+		Character string  `json:"character"`
+		Score     float64 `json:"score"`
+		SetBonus  float64 `json:"set_bonus"`
+		MainStat  float64 `json:"main_stat"`
+		Substats  float64 `json:"substats"`
+		Penalty   float64 `json:"penalty"`
+	}
+
+	scores := []charScore{}
+	setName := str(a["set_name"])
+	level := intVal(a["level"])
+
+	for charName, weights := range characterStatWeights {
+		setBonus := 0.0
+		for _, s := range characterBestSets[charName] {
+			if s == setName {
+				setBonus = 30
+				break
+			}
+		}
+		mainStatScore := 0.0
+		if slot == "flower" || slot == "plume" {
+			mainStatScore = 30
+		} else if desiredSlots := characterDesiredMainStats[charName]; desiredSlots != nil {
+			for _, d := range desiredSlots[slot] {
+				if d == mainStat {
+					mainStatScore = 30
+					break
+				}
+			}
+		}
+		substatScore := 0.0
+		totalSubs := 0
+		usefulSubs := 0
+		for _, sk := range subKeys {
+			if sk != "" {
+				totalSubs++
+				if w, ok := weights[sk]; ok && w > 0 {
+					substatScore += w * 10
+					usefulSubs++
+				}
+			}
+		}
+		penalty := 0.0
+		upgrades := float64(level / 4)
+		if upgrades > 0 && totalSubs > 0 {
+			wasteRatio := float64(totalSubs-usefulSubs) / float64(totalSubs)
+			penalty = math.Round(upgrades*wasteRatio*2*10) / 10
+		}
+		total := setBonus + mainStatScore + substatScore - penalty
+		displayName := charName
+		if ko := charNameKo[charName]; ko != "" {
+			displayName = ko
+		}
+		scores = append(scores, charScore{
+			Character: displayName,
+			Score:     math.Round(total*10) / 10,
+			SetBonus:  setBonus,
+			MainStat:  mainStatScore,
+			Substats:  math.Round(substatScore*10) / 10,
+			Penalty:   penalty,
+		})
+	}
+
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].Score > scores[j].Score
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(scores)
 }
 
 func countEquipped(artifacts []map[string]interface{}) int {
@@ -1598,6 +1747,11 @@ var artifactSetKoreanNames = map[string]string{
 	"AubadeOfMorningstarAndMoon": "샛별과 달의 여명",
 	"NightOfTheSkysUnveiling": "하늘 경계가 드러난 밤",
 	"ADayCarvedFromRisingWinds": "바람이 시작되는 날",
+	// 4성 세트
+	"Instructor": "교관", "TheExile": "유배자", "Berserker": "전투광",
+	"ResolutionOfSojourner": "행자의 마음", "BraveHeart": "용사의 마음",
+	"DefendersWill": "수호자의 마음", "TinyMiracle": "기적",
+	"MartialArtist": "무인", "Gambler": "노름꾼", "Scholar": "학사",
 }
 
 // Maps character name → recommended artifact sets (GOOD format PascalCase keys)
@@ -1668,7 +1822,7 @@ var characterBestSets = map[string][]string{
 	"Beidou": {"EmblemOfSeveredFate"}, "Keqing": {"ThunderingFury", "GildedDreams"},
 	"Kujou Sara": {"EmblemOfSeveredFate", "NoblesseOblige"},
 	"Raiden Shogun": {"EmblemOfSeveredFate"}, "Yae Miko": {"GoldenTroupe", "GildedDreams"},
-	"Kuki Shinobu": {"FlowerOfParadiseLost", "GildedDreams"},
+	"Kuki Shinobu": {"FlowerOfParadiseLost", "GildedDreams", "Instructor"},
 	"Dori": {"NoblesseOblige"}, "Cyno": {"GildedDreams", "ThunderingFury"},
 	"Sethos": {"WanderersTroupe", "ThunderingFury"}, "Clorinde": {"FragmentOfHarmonicWhimsy"},
 	"Ororon": {"NoblesseOblige", "GoldenTroupe"},
@@ -1676,24 +1830,24 @@ var characterBestSets = map[string][]string{
 	"Varesa": {"LongNightsOath", "ObsidianCodex"},
 	// Cryo
 	"Qiqi": {"OceanHuedClam"}, "Chongyun": {"NoblesseOblige", "BlizzardStrayer"},
-	"Diona": {"NoblesseOblige", "TenacityOfTheMillelith"},
+	"Diona": {"NoblesseOblige", "TenacityOfTheMillelith", "Instructor"},
 	"Ganyu": {"BlizzardStrayer", "WanderersTroupe"}, "Rosaria": {"EmblemOfSeveredFate", "BlizzardStrayer"},
 	"Shenhe": {"NoblesseOblige", "GladiatorsFinale"}, "Ayaka": {"BlizzardStrayer"},
 	"Aloy": {"BlizzardStrayer"}, "Layla": {"TenacityOfTheMillelith"},
 	"Mika": {"NoblesseOblige", "OceanHuedClam"}, "Freminet": {"PaleFlame", "BlizzardStrayer"},
 	"Wriothesley": {"MarechausseeHunter"}, "Charlotte": {"OceanHuedClam", "NoblesseOblige"},
-	"Citlali": {"ScrollOfTheHeroOfCinderCity", "TenacityOfTheMillelith"},
+	"Citlali": {"ScrollOfTheHeroOfCinderCity", "TenacityOfTheMillelith", "Instructor"},
 	// Dendro
-	"Collei": {"DeepwoodMemories", "NoblesseOblige"}, "Tighnari": {"DeepwoodMemories", "GildedDreams"},
-	"Nahida": {"DeepwoodMemories", "GildedDreams"}, "Yaoyao": {"DeepwoodMemories", "TenacityOfTheMillelith"},
+	"Collei": {"DeepwoodMemories", "NoblesseOblige", "Instructor"}, "Tighnari": {"DeepwoodMemories", "GildedDreams"},
+	"Nahida": {"DeepwoodMemories", "GildedDreams"}, "Yaoyao": {"DeepwoodMemories", "TenacityOfTheMillelith", "Instructor"},
 	"Alhaitham": {"GildedDreams"}, "Kaveh": {"DeepwoodMemories", "FlowerOfParadiseLost"},
 	"Baizhu": {"DeepwoodMemories", "OceanHuedClam"}, "Kirara": {"TenacityOfTheMillelith"},
 	"Emilie": {"UnfinishedReverie", "GildedDreams"}, "Kinich": {"ObsidianCodex", "UnfinishedReverie"},
 	"Xilonen": {"ScrollOfTheHeroOfCinderCity", "TenacityOfTheMillelith"},
 	// Anemo
-	"Sucrose": {"ViridescentVenerer"}, "Jean": {"ViridescentVenerer"},
+	"Sucrose": {"ViridescentVenerer", "Instructor"}, "Jean": {"ViridescentVenerer"},
 	"Venti": {"ViridescentVenerer"}, "Xiao": {"VermillionHereafter", "DesertPavilionChronicle"},
-	"Kaedehara Kazuha": {"ViridescentVenerer"}, "Sayu": {"ViridescentVenerer"},
+	"Kaedehara Kazuha": {"ViridescentVenerer"}, "Sayu": {"ViridescentVenerer", "Instructor"},
 	"Heizou": {"ViridescentVenerer"}, "Faruzan": {"ViridescentVenerer", "NoblesseOblige"},
 	"Wanderer": {"DesertPavilionChronicle"}, "Lynette": {"ViridescentVenerer"},
 	"Lan Yan": {"ViridescentVenerer"}, "Chasca": {"ObsidianCodex", "MarechausseeHunter"},
@@ -1710,9 +1864,9 @@ var characterBestSets = map[string][]string{
 	// New 5.5+ sets & characters
 	"Skirk": {"FinaleOfTheDeepGalleries"}, "Eula": {"PaleFlame", "FinaleOfTheDeepGalleries"},
 	"Nefer": {"NightOfTheSkysUnveiling"}, "Zibai": {"NightOfTheSkysUnveiling"},
-	"Lauma": {"SilkenMoonsSerenade", "NightOfTheSkysUnveiling"},
+	"Lauma": {"SilkenMoonsSerenade", "NightOfTheSkysUnveiling", "Instructor"},
 	"Aino": {"SilkenMoonsSerenade", "NoblesseOblige"},
-	"Ineffa": {"SilkenMoonsSerenade"},
+	"Ineffa": {"SilkenMoonsSerenade", "Instructor"},
 	"Escoffier": {"SilkenMoonsSerenade", "NoblesseOblige"},
 	"Ifa": {"NightOfTheSkysUnveiling", "SilkenMoonsSerenade"},
 	"Durin": {"ADayCarvedFromRisingWinds"},
@@ -2441,23 +2595,41 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+	// Load name dictionary Ko->En mapping
+	nameResult, _ := rqliteQuery("SELECT name_en, name_ko FROM character_names")
+	koToEn := make(map[string]string)
+	enToKo := make(map[string]string)
+	for _, row := range parseRows(nameResult) {
+		en := strings.ReplaceAll(str(row["name_en"]), " ", "")
+		ko := strings.ReplaceAll(str(row["name_ko"]), " ", "")
+		koToEn[ko] = en
+		enToKo[en] = ko
+	}
+
 		// Check if user has the featured cast characters
 		castNames := strings.Split(castStr, ",")
 		for _, cn := range castNames {
-			cn = strings.TrimSpace(cn)
-			if cn == "" {
+			rawCn := strings.TrimSpace(cn)
+			if rawCn == "" {
 				continue
 			}
+			cnStripped := strings.ReplaceAll(rawCn, " ", "")
+			cnEn := cnStripped
+			if en, ok := koToEn[cnStripped]; ok {
+				cnEn = en
+			}
+
 			// Apply gender filter to cast recommendations
-			cnGender := getCharGender(cn)
+			cnGender := getCharGender(cnEn)
 			if preferGender != "all" && cnGender != preferGender {
-				if !(preferGender == "female" && includeDefaultMales == 1 && isDefaultMale(cn)) {
+				if !(preferGender == "female" && includeDefaultMales == 1 && isDefaultMale(cnEn)) {
 					continue
 				}
 			}
 			found := false
 			for _, c := range filteredChars {
-				if strings.ReplaceAll(str(c["name"]), " ", "") == cn {
+				cName := strings.ReplaceAll(str(c["name"]), " ", "")
+				if cName == cnStripped || cName == cnEn || enToKo[cName] == cnStripped {
 					found = true
 					break
 				}
@@ -2465,7 +2637,7 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 			if !found {
 				recs = append(recs, recommendation{
 					Category: "환상극",
-					Title:    fmt.Sprintf("출연 캐릭터 %s 미보유", cn),
+					Title:    fmt.Sprintf("출연 캐릭터 %s 미보유", rawCn),
 					Reason:   fmt.Sprintf("%s 출연 캐릭터", title),
 					Resin:    0,
 					Priority: 3,

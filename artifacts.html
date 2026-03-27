@@ -125,6 +125,10 @@
           <p data-i18n="art.subtitle">Manage and optimize your celestial equipment</p>
         </div>
         <div class="sort-bar">
+          <a href="smart-discard.html" class="btn btn--secondary" style="margin-right:1rem; text-decoration:none; display:flex; align-items:center; gap:0.5rem; background:rgba(255, 96, 96, 0.15); color:var(--error); border: 1px solid rgba(255, 96, 96, 0.3);">
+            <span class="material-symbols-outlined">auto_delete</span>
+            <span data-i18n="art.smart_discard" style="font-weight:bold;">스마트 폐기</span>
+          </a>
           <span class="sort-bar__label" data-i18n="art.sortby">Sort By</span>
           <div class="sort-tabs">
             <button class="sort-tab sort-tab--active" data-i18n="art.quality">Quality</button>
@@ -135,7 +139,21 @@
 
       <!-- Artifact Grid -->
       <div class="artifact-grid" id="artifact-grid">
-        <!-- Dynamic from API -->
+        <!-- Empty state banner (hidden when artifacts exist) -->
+        <div id="artifact-empty-state" style="display:none;grid-column:1/-1;text-align:center;padding:4rem 2rem;">
+          <div style="max-width:28rem;margin:0 auto;">
+            <span class="material-symbols-outlined" style="font-size:4rem;color:var(--outline);margin-bottom:1rem;display:block;">cloud_upload</span>
+            <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.5rem;">성유물 데이터가 없습니다</h2>
+            <p style="font-size:0.875rem;color:var(--on-surface-variant);margin-bottom:1.5rem;">GOOD 포맷 JSON 파일을 업로드하면 성유물이 표시됩니다</p>
+            <div id="artifact-drop-zone" style="border:2px dashed var(--outline-variant);border-radius:var(--r-xl);padding:2.5rem;cursor:pointer;transition:all 0.2s;">
+              <span class="material-symbols-outlined" style="font-size:2.5rem;color:var(--primary);margin-bottom:0.5rem;display:block;">upload_file</span>
+              <p style="font-size:0.875rem;color:var(--on-surface-variant);">클릭하거나 파일을 드래그하세요</p>
+              <p style="font-size:0.75rem;color:var(--outline);margin-top:0.25rem;">GOOD 포맷 (.json)</p>
+              <input type="file" id="artifact-import-file" accept=".json" style="display:none;"/>
+            </div>
+            <div id="artifact-import-result" style="display:none;margin-top:1rem;background:var(--surface-highest);border-radius:var(--r-md);padding:1rem;"></div>
+          </div>
+        </div>
       </div>
 
       <div class="load-more">
@@ -146,10 +164,6 @@
 </main>
 
 <!-- FABs -->
-<a href="smart-discard.html" class="fab" style="bottom:6rem;text-decoration:none;background:var(--error-container);color:var(--on-error-container)">
-  <span class="material-symbols-outlined">auto_delete</span>
-  <span class="fab__tooltip">스마트 폐기</span>
-</a>
 <button class="fab">
   <span class="material-symbols-outlined">calculate</span>
   <span class="fab__tooltip">Batch Optimize</span>

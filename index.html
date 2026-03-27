@@ -51,6 +51,22 @@
     <input type="file" id="import-file" accept=".json" style="display:none"/>
   </div>
 
+  <!-- Empty state import prompt (shown when no data) -->
+  <div id="home-empty-state" style="display:none;text-align:center;padding:2rem 1rem 0;">
+    <div style="max-width:28rem;margin:0 auto;background:var(--surface-high);border-radius:var(--r-xl);padding:2.5rem;">
+      <span class="material-symbols-outlined" style="font-size:3rem;color:var(--primary);margin-bottom:0.75rem;display:block;">database</span>
+      <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.5rem;">데이터를 가져오세요</h2>
+      <p style="font-size:0.875rem;color:var(--on-surface-variant);margin-bottom:1.5rem;">GOOD 포맷 JSON 파일을 업로드하여 캐릭터, 성유물, 무기 데이터를 가져올 수 있습니다.</p>
+      <div id="home-drop-zone" style="border:2px dashed var(--outline-variant);border-radius:var(--r-xl);padding:2rem;cursor:pointer;transition:all 0.2s;">
+        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--primary);margin-bottom:0.5rem;display:block;">upload_file</span>
+        <p style="font-size:0.875rem;color:var(--on-surface-variant);">클릭하거나 파일을 드래그하세요</p>
+        <p style="font-size:0.75rem;color:var(--outline);margin-top:0.25rem;">GOOD 포맷 (.json)</p>
+        <input type="file" id="home-import-file" accept=".json" style="display:none;"/>
+      </div>
+      <div id="home-import-result" style="display:none;margin-top:1rem;background:var(--surface-highest);border-radius:var(--r-md);padding:1rem;"></div>
+    </div>
+  </div>
+
   <!-- Quick Access Cards -->
   <div id="home-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1.5rem;margin-top:1rem">
 

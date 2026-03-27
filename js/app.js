@@ -81,6 +81,101 @@ function fmt(n) {
   return typeof n === 'number' ? n.toLocaleString() : n
 }
 
+// --- Inline Import Handler (shared by artifacts + home empty states) ---
+function bindInlineImport(dropZoneId, fileInputId, resultDivId, onSuccess) {
+  const dropZone = document.getElementById(dropZoneId)
+  const fileInput = document.getElementById(fileInputId)
+  const resultDiv = document.getElementById(resultDivId)
+  if (!dropZone || !fileInput) return
+
+  dropZone.addEventListener('click', () => fileInput.click())
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault()
+    dropZone.style.borderColor = 'var(--primary)'
+    dropZone.style.background = 'rgba(175,198,255,0.05)'
+  })
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = ''
+    dropZone.style.background = ''
+  })
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dropZone.style.borderColor = ''
+    dropZone.style.background = ''
+    const file = e.dataTransfer.files[0]
+    if (file) handleInlineImport(file, dropZone, resultDiv, onSuccess)
+  })
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleInlineImport(e.target.files[0], dropZone, resultDiv, onSuccess)
+    fileInput.value = ''
+  })
+}
+
+async function handleInlineImport(file, dropZone, resultDiv, onSuccess) {
+  if (!resultDiv) return
+  resultDiv.style.display = 'block'
+  dropZone.style.display = 'none'
+  resultDiv.innerHTML = '<div style="display:flex;align-items:center;gap:0.75rem;">' +
+    '<span class="material-symbols-outlined" style="color:var(--primary);">sync</span>' +
+    '<span style="font-weight:600;font-size:0.875rem;">데이터 가져오는 중...</span></div>'
+  const icon = resultDiv.querySelector('span')
+  icon.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, iterations: Infinity })
+
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+
+    if (data.format !== 'GOOD') {
+      throw new Error('GOOD 포맷이 아닙니다. Irminsul에서 GOOD 포맷으로 내보내세요.')
+    }
+
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: text,
+    })
+
+    if (res.status === 401) {
+      window.location.href = '/login.html'
+      return
+    }
+    if (!res.ok) throw new Error('Import 실패')
+
+    const result = await res.json()
+    resultDiv.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">' +
+      '<span class="material-symbols-outlined" style="color:var(--secondary)">check_circle</span>' +
+      '<span style="font-weight:700;font-size:0.875rem">Import 완료!</span></div>' +
+      '<div style="font-size:0.875rem;color:var(--on-surface-variant);">' +
+      '캐릭터 ' + (result.characters || 0) + '개, 성유물 ' + (result.artifacts || 0) + '개, 무기 ' + (result.weapons || 0) + '개 가져오기 완료!</div>'
+
+    if (onSuccess) {
+      setTimeout(() => onSuccess(result), 1200)
+    }
+  } catch (err) {
+    dropZone.style.display = ''
+    resultDiv.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem">' +
+      '<span class="material-symbols-outlined" style="color:var(--error)">error</span>' +
+      '<span style="color:var(--error);font-size:0.875rem">' + err.message + '</span></div>'
+  }
+}
+
+// --- Toast notification ---
+function showToast(message) {
+  const toast = document.createElement('div')
+  toast.style.cssText = 'position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);background:var(--surface-highest);color:var(--on-surface);padding:0.75rem 1.5rem;border-radius:var(--r-md);font-size:0.875rem;font-weight:600;box-shadow:0 4px 24px rgba(0,0,0,0.3);z-index:9999;display:flex;align-items:center;gap:0.5rem;'
+  toast.innerHTML = '<span class="material-symbols-outlined" style="color:var(--secondary);font-size:1.25rem;">check_circle</span>' + message
+  document.body.appendChild(toast)
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.4s'
+    toast.style.opacity = '0'
+    setTimeout(() => toast.remove(), 400)
+  }, 3000)
+}
+
 // --- Page: Home (index) ---
 async function initHome() {
   const container = $('#home-grid')
@@ -93,12 +188,25 @@ async function initHome() {
     api.get('/teams'),
     api.get('/builds'),
   ])
+  if (!chars || !artifacts || !weapons || !teams || !builds) return
 
   $('#home-char-count').textContent = chars.length
   $('#home-artifact-count').textContent = fmt(artifacts.length)
   $('#home-weapon-count').textContent = weapons.length
   $('#home-team-count').textContent = teams.length
   $('#home-build-count').textContent = builds.length
+
+  // Show empty-state import prompt if all counts are 0
+  const homeEmpty = $('#home-empty-state')
+  if (homeEmpty && chars.length === 0 && artifacts.length === 0 && weapons.length === 0) {
+    homeEmpty.style.display = ''
+    bindInlineImport('home-drop-zone', 'home-import-file', 'home-import-result', (result) => {
+      showToast('Import 완료! 성유물 ' + (result.artifacts || 0) + '개가 추가되었습니다')
+      initHome()
+    })
+  } else if (homeEmpty) {
+    homeEmpty.style.display = 'none'
+  }
 
   // Character avatars
   const avatarBox = $('#home-char-avatars')
@@ -133,8 +241,20 @@ async function initHome() {
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0]
       if (!file) return
-      const text = await file.text()
+
+      const overlay = document.createElement('div')
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff;backdrop-filter:blur(8px);font-family:var(--font-primary, sans-serif);'
+      overlay.innerHTML = `
+        <span class="material-symbols-outlined" style="font-size:4rem;margin-bottom:1rem;">sync</span>
+        <h2 style="font-size:1.5rem;font-weight:600;margin:0;" data-i18n="import.progress.title">Importing Data...</h2>
+        <p style="color:#aaa;margin-top:0.5rem;" data-i18n="import.progress.subtitle">Please do not close this window</p>
+      `
+      document.body.appendChild(overlay)
+      const icon = overlay.querySelector('span')
+      icon.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, iterations: Infinity })
+
       try {
+        const text = await file.text()
         const data = JSON.parse(text)
         const res = await fetch('/api/import', {
           method: 'POST',
@@ -146,6 +266,7 @@ async function initHome() {
         alert(`Imported: ${result.characters || 0} characters, ${result.artifacts || 0} artifacts, ${result.weapons || 0} weapons`)
         location.reload()
       } catch (err) {
+        document.body.removeChild(overlay)
         alert('Import error: ' + err.message)
       }
       fileInput.value = ''
@@ -164,6 +285,7 @@ async function initCharacters() {
   const charId = params.get('id') || '1'
 
   const chars = await api.get('/characters')
+  if (!chars) return
   const char = chars.find((c) => String(c.id) === charId) || chars[0]
   if (!char) return
 
@@ -193,6 +315,7 @@ async function initCharacters() {
 
   // Optimizer results (from builds)
   const builds = await api.get('/builds')
+  if (!builds) return
   const charBuilds = builds.filter((b) => b.character_name === char.name)
   const resultsContainer = $('#results-list')
   if (resultsContainer && charBuilds.length > 0) {
@@ -237,12 +360,64 @@ async function initCharacters() {
   })
 }
 
+// --- Artifact Dictionaries ---
+const statNameKo = {
+  hp: 'HP', hp_: 'HP%', atk: '공격력', atk_: '공격력%', def: '방어력', def_: '방어력%',
+  eleMas: '원소 마스터리', enerRech_: '원소 충전 효율', critRate_: '치명타 확률', critDMG_: '치명타 피해',
+  heal_: '치유 보너스', physical_dmg_: '물리 피해 보너스', pyro_dmg_: '불 원소 피해 보너스',
+  hydro_dmg_: '물 원소 피해 보너스', cryo_dmg_: '얼음 원소 피해 보너스', electro_dmg_: '번개 원소 피해 보너스',
+  anemo_dmg_: '바람 원소 피해 보너스', geo_dmg_: '바위 원소 피해 보너스', dendro_dmg_: '풀 원소 피해 보너스'
+}
+const statNameEn = {
+  hp: 'HP', hp_: 'HP%', atk: 'ATK', atk_: 'ATK%', def: 'DEF', def_: 'DEF%',
+  eleMas: 'Elemental Mastery', enerRech_: 'Energy Recharge', critRate_: 'CRIT Rate', critDMG_: 'CRIT DMG',
+  heal_: 'Healing Bonus', physical_dmg_: 'Physical DMG', pyro_dmg_: 'Pyro DMG',
+  hydro_dmg_: 'Hydro DMG', cryo_dmg_: 'Cryo DMG', electro_dmg_: 'Electro DMG',
+  anemo_dmg_: 'Anemo DMG', geo_dmg_: 'Geo DMG', dendro_dmg_: 'Dendro DMG'
+}
+const slotNameKo = {
+  flower: '생명의 꽃', plume: '죽음의 깃털', sands: '시간의 모래', goblet: '공간의 성배', circlet: '이성의 왕관'
+}
+const setNameKo = {
+  GladiatorsFinale: '검투사의 피날레', WanderersTroupe: '대지를 유랑하는 악단',
+  ThunderingFury: '번개 같은 분노', Thundersoother: '뇌명을 평정한 존자',
+  ViridescentVenerer: '청록색 그림자', MaidenBeloved: '사랑받는 소녀',
+  NoblesseOblige: '옛 왕실의 의식', RetracingBolide: '날아오르는 유성',
+  CrimsonWitchOfFlames: '불타오르는 화염의 마녀', Lavawalker: '불 위를 걷는 현인',
+  BloodstainedChivalry: '피에 물든 기사도', ArchaicPetra: '유구한 반암',
+  BlizzardStrayer: '얼음바람 속에서 길잃은 용사', HeartOfDepth: '몰락한 마음',
+  TenacityOfTheMillelith: '견고한 천암', PaleFlame: '창백의 화염',
+  ShimenawasReminiscence: '추억의 시메나와', EmblemOfSeveredFate: '절연의 기치',
+  OceanHuedClam: '바다에 물든 거대 조개', HuskOfOpulentDreams: '풍요로운 꿈의 껍데기',
+  VermillionHereafter: '진사 왕생록', EchoesOfAnOffering: '제사의 여운',
+  DeepwoodMemories: '숲의 기억', GildedDreams: '도금된 꿈',
+  DesertPavilionChronicle: '모래 위 누각의 역사', FlowerOfParadiseLost: '잃어버린 낙원의 꽃',
+  NymphsDream: '님프의 꿈', VourukashasGlow: '감로빛 꽃바다',
+  MarechausseeHunter: '그림자 사냥꾼', GoldenTroupe: '황금 극단',
+  SongOfDaysPast: '지난날의 노래', NighttimeWhispersInTheEchoingWoods: '메아리숲의 야화',
+  FragmentOfHarmonicWhimsy: '조화로운 공상의 단편', UnfinishedReverie: '미완의 몽상',
+  ScrollOfTheHeroOfCinderCity: '잿더미성 용사의 두루마리', ObsidianCodex: '흑요석 비전',
+  LongNightsOath: '긴 밤의 맹세',
+  FinaleOfTheDeepGalleries: '깊은 회랑의 피날레',
+  NightOfTheSkysUnveiling: '하늘 경계가 드러난 밤',
+  SilkenMoonsSerenade: '달을 엮는 밤노래',
+  AubadeOfMorningstarAndMoon: '샛별과 달의 여명',
+  ADayCarvedFromRisingWinds: '바람이 시작되는 날',
+  Instructor: '교관', TheExile: '유배자', Berserker: '전투광',
+  ResolutionOfSojourner: '행자의 마음', BraveHeart: '용사의 마음',
+  DefendersWill: '수호자의 마음', TinyMiracle: '기적',
+  MartialArtist: '무인', Gambler: '노름꾼', Scholar: '학사',
+}
+
 // --- Page: Artifacts ---
 async function initArtifacts() {
   const grid = $('#artifact-grid')
   if (!grid) return
 
+  await loadCharNameMap()
+
   const artifacts = await api.get('/artifacts')
+  if (!artifacts) return
 
   // Update archive counts
   const archiveVal = $('.archive-total__value')
@@ -250,15 +425,45 @@ async function initArtifacts() {
   const archiveLv20 = $('#archive-lv20')
   if (archiveLv20) archiveLv20.textContent = artifacts.filter((a) => Number(a.level) >= 20).length
   const countDisplay = $('#artifact-count-display')
-  if (countDisplay) countDisplay.textContent = `전체 ${fmt(artifacts.length)}개 표시`
+
+  // Empty state: show inline import banner
+  const emptyState = $('#artifact-empty-state')
+  if (artifacts.length === 0) {
+    grid.innerHTML = ''
+    if (emptyState) {
+      emptyState.style.display = ''
+      grid.appendChild(emptyState)
+      bindInlineImport('artifact-drop-zone', 'artifact-import-file', 'artifact-import-result', (result) => {
+        showToast('Import 완료! 성유물 ' + (result.artifacts || 0) + '개가 추가되었습니다')
+        initArtifacts()
+      })
+    }
+    return
+  }
+
+  // Hide empty state if it exists (re-entry after import)
+  if (emptyState) emptyState.style.display = 'none'
 
   grid.innerHTML = ''
   const accents = ['primary', 'secondary', 'tertiary', 'error']
   const iconTints = ['gold', 'green', 'purple', 'red']
 
-  artifacts.forEach((a, i) => {
+  const PAGE_SIZE = 50
+  let rendered = 0
+  const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+
+  function renderBatch() {
+    const batch = artifacts.slice(rendered, rendered + PAGE_SIZE)
+    if (batch.length === 0) return false
+    let html = ''
+    batch.forEach((a, idx) => {
+      const i = rendered + idx
     const accent = accents[i % accents.length]
     const tint = iconTints[i % iconTints.length]
+
+    const displaySet = isKo ? (setNameKo[a.set_name] || a.set_name) : a.set_name
+    const displaySlot = isKo ? (slotNameKo[a.slot] || a.slot) : a.slot
+    const displayMainStat = isKo ? (statNameKo[a.main_stat_type] || a.main_stat_type) : (statNameEn[a.main_stat_type] || a.main_stat_type)
 
     const subs = [
       { name: a.sub1_name, value: a.sub1_value, rolls: a.sub1_rolls },
@@ -268,13 +473,15 @@ async function initArtifacts() {
     ].filter((s) => s.name)
 
     const subsHTML = subs.map((s) => {
-      const barClass = s.rolls >= 3 ? 'high' : s.rolls >= 2 ? 'mid' : 'low'
-      const dots = Array(s.rolls).fill('<div class="substat__dot"></div>').join('')
+      const rolls = Math.max(0, parseInt(s.rolls) || 0)
+      const barClass = rolls >= 3 ? 'high' : rolls >= 2 ? 'mid' : 'low'
+      const dots = Array(rolls).fill('<div class="substat__dot"></div>').join('')
+      const subDisplay = isKo ? (statNameKo[s.name] || s.name) : (statNameEn[s.name] || s.name)
       return `
         <div class="substat">
           <div class="substat__left">
             <div class="substat__bar substat__bar--${barClass}"></div>
-            <span class="substat__name">${s.name}</span>
+            <span class="substat__name">${subDisplay}</span>
           </div>
           <div class="substat__right">
             <span class="substat__value">${s.value}</span>
@@ -283,30 +490,35 @@ async function initArtifacts() {
         </div>`
     }).join('')
 
-    grid.innerHTML += `
+    html += `
       <div class="artifact-card">
         <div class="artifact-card__accent artifact-card__accent--${accent}"></div>
         <div class="artifact-card__body">
           <div class="artifact-card__top">
             <div class="artifact-card__icon-wrap">
               <div class="artifact-card__icon artifact-card__icon--${tint}">
-                <img alt="${a.name}" src="${a.icon}"/>
+                <img alt="${a.name}" src="${a.icon || `assets/slots/icon_slot_${a.slot}.png`}"/>
               </div>
               <span class="artifact-card__level">+${a.level}</span>
             </div>
             <div class="artifact-card__main-stat">
-              <p class="artifact-card__main-stat-label">Main Stat</p>
+              <p class="artifact-card__main-stat-label" data-i18n="art.mainstat">Main Stat</p>
               <p class="artifact-card__main-stat-value">${a.main_stat_value}</p>
-              <p class="artifact-card__main-stat-type">${a.main_stat_type}</p>
+              <p class="artifact-card__main-stat-type" style="font-size:0.7rem;opacity:0.8">${displayMainStat}</p>
             </div>
           </div>
           <div>
-            <h3 class="artifact-card__name">${a.name}</h3>
-            <p class="artifact-card__set">${a.set_name}</p>
+            <h3 class="artifact-card__name" style="font-size:1rem">${displaySet}</h3>
+            <p class="artifact-card__set" style="font-size:0.75rem">${displaySlot}</p>
           </div>
           <div class="substats">${subsHTML}</div>
           <div class="artifact-card__footer">
-            <span style="font-size:0.625rem;color:var(--on-surface-variant)">${a.equipped_by || ''}</span>
+            ${a.equipped_by ? `
+              <div style="display:flex;align-items:center;gap:0.375rem;background:var(--surface-highest);padding:0.25rem 0.5rem 0.25rem 0.25rem;border-radius:1rem;color:var(--on-surface);">
+                <img src="${charIconPath(a.equipped_by)}" alt="${localizeCharName(a.equipped_by)}" onerror="this.style.display='none'" style="width:1.25rem;height:1.25rem;border-radius:50%;object-fit:cover;background:var(--outline-variant);"/>
+                <span style="font-size:0.75rem;font-weight:600;padding-right:0.25rem">${isKo ? localizeCharName(a.equipped_by) : a.equipped_by}</span>
+              </div>
+            ` : '<span></span>'}
             <button class="artifact-card__edit" data-id="${a.id}">
               <span class="material-symbols-outlined" style="font-size:1.125rem">delete</span>
             </button>
@@ -315,22 +527,39 @@ async function initArtifacts() {
       </div>`
   })
 
-  // Add artifact placeholder
-  grid.innerHTML += `
-    <button class="artifact-add" id="btn-add-artifact">
-      <span class="material-symbols-outlined">add_circle</span>
-      <span>Add Artifact</span>
-    </button>`
-
-  // Delete handlers
-  $$('.artifact-card__edit', grid).forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id
-      if (!id) return
-      await api.del(`/artifacts/${id}`)
-      initArtifacts()
+    grid.insertAdjacentHTML('beforeend', html)
+    // Bind delete handlers for newly added cards
+    grid.querySelectorAll('.artifact-card__edit:not([data-bound])').forEach((btn) => {
+      btn.dataset.bound = '1'
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id
+        if (!id) return
+        await api.del(`/artifacts/${id}`)
+        initArtifacts()
+      })
     })
-  })
+    rendered += batch.length
+    if (countDisplay) countDisplay.textContent = `${fmt(rendered)} / ${fmt(artifacts.length)}개 표시`
+    return true
+  }
+
+  // Initial render
+  renderBatch()
+
+  // Infinite scroll: load more when near bottom
+  const scrollHandler = () => {
+    if (rendered >= artifacts.length) return
+    const scrollBottom = window.innerHeight + window.scrollY
+    if (scrollBottom >= document.body.offsetHeight - 400) {
+      renderBatch()
+    }
+  }
+  // Remove previous scroll handler if re-entering
+  if (window._artifactScrollHandler) {
+    window.removeEventListener('scroll', window._artifactScrollHandler)
+  }
+  window._artifactScrollHandler = scrollHandler
+  window.addEventListener('scroll', scrollHandler)
 
   // Filter interactivity
   bindFilters()
@@ -342,6 +571,7 @@ async function initWeapons() {
   if (!grid) return
 
   const weapons = await api.get('/weapons')
+  if (!weapons) return
   grid.innerHTML = ''
 
   weapons.forEach((w) => {
@@ -399,6 +629,7 @@ async function initTeams() {
 
   const teams = await api.get('/teams')
   const chars = await api.get('/characters')
+  if (!teams || !chars) return
 
   list.innerHTML = ''
   teams.forEach((t) => {
@@ -439,6 +670,7 @@ async function initBuilds() {
   if (!list) return
 
   const builds = await api.get('/builds')
+  if (!builds) return
   list.innerHTML = ''
 
   builds.forEach((b) => {
@@ -914,30 +1146,21 @@ async function initSmartDiscard() {
   const sliderVal = document.getElementById('sd-threshold-val')
   if (!grid) return
 
+  // Modal close handlers
+  const modalOverlay = document.getElementById('sd-modal-overlay')
+  const modalClose = document.getElementById('sd-modal-close')
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) modalOverlay.classList.remove('active')
+    })
+  }
+  if (modalClose) {
+    modalClose.addEventListener('click', () => modalOverlay.classList.remove('active'))
+  }
+
   const slotIcons = {
     flower: 'local_florist', plume: 'flight', sands: 'hourglass_empty',
     goblet: 'wine_bar', circlet: 'crown',
-  }
-  const setNameKo = {
-    GladiatorsFinale: '검투사의 피날레', WanderersTroupe: '대지를 유랑하는 악단',
-    ThunderingFury: '번개 같은 분노', Thundersoother: '뇌명을 평정한 존자',
-    ViridescentVenerer: '청록색 그림자', MaidenBeloved: '사랑받는 소녀',
-    NoblesseOblige: '옛 왕실의 의식', RetracingBolide: '날아오르는 유성',
-    CrimsonWitchOfFlames: '불타오르는 화염의 마녀', Lavawalker: '불 위를 걷는 현인',
-    BloodstainedChivalry: '피에 물든 기사도', ArchaicPetra: '유구한 반암',
-    BlizzardStrayer: '얼음바람 속에서 길잃은 용사', HeartOfDepth: '몰락한 마음',
-    TenacityOfTheMillelith: '견고한 천암', PaleFlame: '창백의 화염',
-    ShimenawasReminiscence: '추억의 시메나와', EmblemOfSeveredFate: '절연의 기치',
-    OceanHuedClam: '바다에 물든 거대 조개', HuskOfOpulentDreams: '풍요로운 꿈의 껍데기',
-    VermillionHereafter: '진사 왕생록', EchoesOfAnOffering: '제사의 여운',
-    DeepwoodMemories: '숲의 기억', GildedDreams: '도금된 꿈',
-    DesertPavilionChronicle: '모래 위 누각의 역사', FlowerOfParadiseLost: '잃어버린 낙원의 꽃',
-    NymphsDream: '님프의 꿈', VourukashasGlow: '감로빛 꽃바다',
-    MarechausseeHunter: '그림자 사냥꾼', GoldenTroupe: '황금 극단',
-    SongOfDaysPast: '지난날의 노래', NighttimeWhispersInTheEchoingWoods: '메아리숲의 야화',
-    FragmentOfHarmonicWhimsy: '조화로운 공상의 단편', UnfinishedReverie: '미완의 몽상',
-    ScrollOfTheHeroOfCinderCity: '잿더미성 용사의 두루마리', ObsidianCodex: '흑요석 비전',
-    LongNightsOath: '긴 밤의 맹세', FinaleOfTheDeep: '깊은 회랑의 피날레',
   }
 
   async function fetchAndRender(thresholdValue) {
@@ -953,7 +1176,43 @@ async function initSmartDiscard() {
       return
     }
 
-    const candidates = data.candidates || []
+    let candidates = data.candidates || []
+
+    // Rebuild set filter dropdown every time
+    const setFilter = document.getElementById('sd-set-filter')
+    if (setFilter) {
+      const prevValue = setFilter.value
+      const sets = {}
+      candidates.forEach(c => { sets[c.artifact.set_name] = (sets[c.artifact.set_name] || 0) + 1 })
+      const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+      setFilter.innerHTML = '<option value="">전체</option>'
+      Object.entries(sets).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
+        const label = isKo ? (setNameKo[k] || k) : k
+        const opt = document.createElement('option')
+        opt.value = k
+        opt.textContent = `${label} (${v})`
+        setFilter.appendChild(opt)
+      })
+      // Restore previous selection if still valid
+      if (prevValue && sets[prevValue]) setFilter.value = prevValue
+
+      // Apply set filter
+      if (setFilter.value) {
+        candidates = candidates.filter(c => c.artifact.set_name === setFilter.value)
+      }
+    }
+
+    // Dismiss filter
+    const dismissFilter = document.getElementById('sd-dismiss-filter')
+    if (dismissFilter && dismissFilter.value !== 'all') {
+      if (dismissFilter.value === 'dismissed') {
+        candidates = candidates.filter(c => c.artifact.dismissed === 1)
+      } else {
+        candidates = candidates.filter(c => !c.artifact.dismissed || c.artifact.dismissed === 0)
+      }
+    }
+
+    if (!sortAsc) candidates.sort((a, b) => b.score - a.score)
 
     totalEl.textContent = data.total || 0
     analyzedEl.textContent = data.analyzed || 0
@@ -967,8 +1226,9 @@ async function initSmartDiscard() {
     }
 
     grid.style.display = ''
-    grid.innerHTML = ''
+    const isKo = (typeof getLang === 'function' && getLang() === 'ko')
 
+    let html = ''
     candidates.forEach((c) => {
       const a = c.artifact
       const subs = [
@@ -978,16 +1238,19 @@ async function initSmartDiscard() {
         { name: a.sub4_name, value: a.sub4_value },
       ].filter(s => s.name)
 
-      const subsHTML = subs.map(s => `
+      const subsHTML = subs.map(s => {
+        const displayName = isKo ? (statNameKo[s.name] || s.name) : (statNameEn[s.name] || s.name)
+        return `
         <div class="substat">
           <div class="substat__left">
             <div class="substat__bar substat__bar--low"></div>
-            <span class="substat__name">${s.name}</span>
+            <span class="substat__name">${displayName}</span>
           </div>
           <div class="substat__right">
             <span class="substat__value">${s.value}</span>
           </div>
-        </div>`).join('')
+        </div>`
+      }).join('')
 
       const reasonsHTML = c.reasons.map(r => `
         <div class="sd-reason">
@@ -995,45 +1258,136 @@ async function initSmartDiscard() {
           <span>${r}</span>
         </div>`).join('')
 
-      const displaySet = setNameKo[a.set_name] || a.set_name
+      const displaySet = isKo ? (setNameKo[a.set_name] || a.set_name) : a.set_name
+      const displayMain = isKo ? (statNameKo[a.main_stat_type] || a.main_stat_type) : (statNameEn[a.main_stat_type] || a.main_stat_type)
       const slotIcon = slotIcons[a.slot] || 'help'
       const bestCharHTML = c.best_character
         ? `<p class="sd-best-char">최적 캐릭터: ${c.best_character} (${c.best_character_score}점)</p>`
         : ''
 
-      grid.innerHTML += `
-        <div class="artifact-card sd-card">
+      const isDismissed = a.dismissed === 1
+      const displaySlot = isKo ? (slotNameKo[a.slot] || a.slot) : a.slot
+      html += `
+        <div class="artifact-card sd-card${isDismissed ? ' dismissed' : ''}" data-id="${a.id}">
           <div class="artifact-card__accent artifact-card__accent--error"></div>
           <div class="artifact-card__body">
-            <div class="artifact-card__top">
+            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
               <div class="artifact-card__icon-wrap">
                 <div class="artifact-card__icon artifact-card__icon--red">
                   <span class="material-symbols-outlined" style="font-size:1.5rem">${slotIcon}</span>
                 </div>
                 <span class="artifact-card__level">+${a.level}</span>
               </div>
-              <div class="artifact-card__main-stat">
-                <p class="artifact-card__main-stat-label">Main Stat</p>
-                <p class="artifact-card__main-stat-type">${a.main_stat_type}</p>
+              <div style="flex:1;min-width:0">
+                <h3 style="font-size:0.8125rem;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${displaySet}</h3>
+                <p style="font-size:0.6875rem;color:var(--on-surface-variant);margin:0.125rem 0 0">${displaySlot} · ${displayMain}</p>
               </div>
             </div>
-            <div>
-              <h3 class="artifact-card__name" style="font-size:0.75rem">${displaySet}</h3>
-              <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem">
-                <span class="sd-score-badge">점수 ${c.score}</span>
-                ${a.rarity && a.rarity < 5 ? `<span style="font-size:0.625rem;color:var(--on-surface-variant)">${a.rarity}★</span>` : ''}
-              </div>
-              ${bestCharHTML}
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
+              <span class="sd-score-badge">점수 ${c.score}</span>
+              ${a.rarity && a.rarity < 5 ? `<span style="font-size:0.625rem;color:var(--on-surface-variant)">${a.rarity}★</span>` : ''}
             </div>
+            ${bestCharHTML}
             <div class="substats">${subsHTML}</div>
             <div class="sd-reasons">${reasonsHTML}</div>
+            <button class="sd-dismiss-btn" data-dismiss-id="${a.id}">
+              <span class="material-symbols-outlined" style="font-size:0.875rem">${isDismissed ? 'undo' : 'check_circle'}</span>
+              <span>${isDismissed ? '제거 취소' : '제거됨 표시'}</span>
+            </button>
           </div>
         </div>`
     })
+    grid.innerHTML = html
+
+    // Dismiss toggle handler
+    grid.querySelectorAll('.sd-dismiss-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        const artId = btn.dataset.dismissId
+        if (!artId) return
+        await fetch(`/api/artifacts/${artId}/dismiss`, { method: 'PUT' })
+        fetchAndRender(slider ? slider.value : 35)
+      })
+    })
+
+    // Click handler: show character scores modal
+    grid.querySelectorAll('.sd-card[data-id]').forEach(card => {
+      card.addEventListener('click', async () => {
+        const artId = card.dataset.id
+        if (!artId) return
+        const overlay = document.getElementById('sd-modal-overlay')
+        const body = document.getElementById('sd-modal-body')
+        const title = document.getElementById('sd-modal-title')
+        if (!overlay || !body) return
+
+        body.innerHTML = '<div style="text-align:center;padding:2rem"><div style="width:2rem;height:2rem;border:3px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto"></div></div>'
+        overlay.classList.add('active')
+
+        try {
+          const res = await fetch(`/api/artifacts/${artId}/character-scores`)
+          if (!res.ok) throw new Error()
+          const scores = await res.json()
+          const maxScore = scores.length > 0 ? scores[0].score : 1
+
+          title.textContent = `캐릭터별 점수 (${scores.length}명)`
+          let html = ''
+          scores.forEach(s => {
+            const pct = Math.max(0, Math.min(100, s.score / 100 * 100))
+            const color = s.score >= 60 ? 'var(--secondary)' : s.score >= 35 ? 'var(--primary)' : 'var(--error)'
+            html += `<div class="sd-modal__row">
+              <div style="flex:1;min-width:0">
+                <div class="sd-modal__char">${s.character}</div>
+                <div class="sd-modal__breakdown">세트 ${s.set_bonus} + 메인 ${s.main_stat} + 서브 ${s.substats}${s.penalty ? ` - 감점 ${s.penalty}` : ''}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0">
+                <div class="sd-modal__bar"><div class="sd-modal__bar-fill" style="width:${pct}%;background:${color}"></div></div>
+                <span class="sd-modal__total" style="color:${color}">${s.score}</span>
+              </div>
+            </div>`
+          })
+          body.innerHTML = html
+        } catch {
+          body.innerHTML = '<p style="text-align:center;padding:2rem;color:var(--error)">조회 실패</p>'
+        }
+      })
+    })
+  }
+
+  // Sort state
+  let sortAsc = true
+  const btnAsc = document.getElementById('sd-sort-asc')
+  const btnDesc = document.getElementById('sd-sort-desc')
+
+  if (btnAsc && btnDesc) {
+    btnAsc.addEventListener('click', () => {
+      if (sortAsc) return
+      sortAsc = true
+      btnAsc.classList.add('sort-tab--active')
+      btnDesc.classList.remove('sort-tab--active')
+      fetchAndRender(slider ? slider.value : 35)
+    })
+    btnDesc.addEventListener('click', () => {
+      if (!sortAsc) return
+      sortAsc = false
+      btnDesc.classList.add('sort-tab--active')
+      btnAsc.classList.remove('sort-tab--active')
+      fetchAndRender(slider ? slider.value : 35)
+    })
+  }
+
+  // Set filter change
+  const setFilterEl = document.getElementById('sd-set-filter')
+  if (setFilterEl) {
+    setFilterEl.addEventListener('change', () => fetchAndRender(slider ? slider.value : 35))
+  }
+  // Dismiss filter change
+  const dismissFilterEl = document.getElementById('sd-dismiss-filter')
+  if (dismissFilterEl) {
+    dismissFilterEl.addEventListener('change', () => fetchAndRender(slider ? slider.value : 35))
   }
 
   // Initial fetch
-  await fetchAndRender(slider ? slider.value : 25)
+  await fetchAndRender(slider ? slider.value : 35)
 
   // Slider change with debounce
   if (slider) {
