@@ -181,97 +181,140 @@ async function initHome() {
   const container = $('#home-grid')
   if (!container) return
 
-  const [chars, artifacts, weapons, teams, builds] = await Promise.all([
+  const [chars, artifacts, weapons] = await Promise.all([
     api.get('/characters'),
     api.get('/artifacts'),
     api.get('/weapons'),
-    api.get('/teams'),
-    api.get('/builds'),
   ])
-  if (!chars || !artifacts || !weapons || !teams || !builds) return
+  if (!chars || !artifacts || !weapons) return
 
-  $('#home-char-count').textContent = chars.length
-  $('#home-artifact-count').textContent = fmt(artifacts.length)
-  $('#home-weapon-count').textContent = weapons.length
-  $('#home-team-count').textContent = teams.length
-  $('#home-build-count').textContent = builds.length
-
-  // Show empty-state import prompt if all counts are 0
   const homeEmpty = $('#home-empty-state')
-  if (homeEmpty && chars.length === 0 && artifacts.length === 0 && weapons.length === 0) {
-    homeEmpty.style.display = ''
-    bindInlineImport('home-drop-zone', 'home-import-file', 'home-import-result', (result) => {
-      showToast('Import 완료! 성유물 ' + (result.artifacts || 0) + '개가 추가되었습니다')
-      initHome()
-    })
-  } else if (homeEmpty) {
-    homeEmpty.style.display = 'none'
+  const homeActions = $('#home-actions')
+
+  // No data → show onboarding guide
+  if (chars.length === 0 && artifacts.length === 0 && weapons.length === 0) {
+    if (homeEmpty) {
+      homeEmpty.style.display = ''
+      bindInlineImport('home-drop-zone', 'home-import-file', 'home-import-result', async (result) => {
+        showToast('Import 완료! 성유물 ' + (result.artifacts || 0) + '개가 추가되었습니다')
+        // Auto-trigger optimizations
+        await autoOptimizeAfterImport()
+        initHome()
+      })
+    }
+    return
   }
 
-  // Character avatars
-  const avatarBox = $('#home-char-avatars')
-  if (avatarBox) {
-    avatarBox.innerHTML = ''
-    chars.slice(0, 4).forEach((c) => {
-      avatarBox.innerHTML += `<div style="width:2rem;height:2rem;border-radius:50%;overflow:hidden;background:var(--surface-highest)"><img src="${c.icon}" alt="${c.name}" style="width:100%;height:100%;object-fit:cover"/></div>`
-    })
-  }
+  // Has data → show action guide
+  if (homeEmpty) homeEmpty.style.display = 'none'
+  if (homeActions) homeActions.style.display = ''
 
-  // Export
-  const btnExport = $('#btn-export')
-  if (btnExport) {
-    btnExport.addEventListener('click', async () => {
-      const res = await fetch('/api/export')
-      if (!res.ok) return
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'genshin-data-export.json'
-      a.click()
-      URL.revokeObjectURL(url)
-    })
-  }
+  // Fetch planner recommendations for actionable items
+  let planner = null
+  try { planner = await api.get('/planner/recommend') } catch {}
 
-  // Import
-  const btnImport = $('#btn-import')
-  const fileInput = $('#import-file')
-  if (btnImport && fileInput) {
-    btnImport.addEventListener('click', () => fileInput.click())
-    fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0]
-      if (!file) return
+  // Fetch smart discard count
+  let discardCount = 0
+  try {
+    const sd = await api.get('/artifacts/smart-discard?threshold=35')
+    discardCount = (sd && sd.candidates) ? sd.candidates.length : 0
+  } catch {}
 
-      const overlay = document.createElement('div')
-      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff;backdrop-filter:blur(8px);font-family:var(--font-primary, sans-serif);'
-      overlay.innerHTML = `
-        <span class="material-symbols-outlined" style="font-size:4rem;margin-bottom:1rem;">sync</span>
-        <h2 style="font-size:1.5rem;font-weight:600;margin:0;" data-i18n="import.progress.title">Importing Data...</h2>
-        <p style="color:#aaa;margin-top:0.5rem;" data-i18n="import.progress.subtitle">Please do not close this window</p>
-      `
-      document.body.appendChild(overlay)
-      const icon = overlay.querySelector('span')
-      icon.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, iterations: Infinity })
+  // Build action cards
+  const todoEl = $('#home-todo-cards')
+  if (todoEl) {
+    let cards = ''
 
-      try {
-        const text = await file.text()
-        const data = JSON.parse(text)
-        const res = await fetch('/api/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        })
-        if (!res.ok) throw new Error('Import failed')
-        const result = await res.json()
-        alert(`Imported: ${result.characters || 0} characters, ${result.artifacts || 0} artifacts, ${result.weapons || 0} weapons`)
-        location.reload()
-      } catch (err) {
-        document.body.removeChild(overlay)
-        alert('Import error: ' + err.message)
+    // 1. Smart discard
+    if (discardCount > 0) {
+      cards += actionCard('auto_delete', '폐기할 성유물 ' + discardCount + '개 발견',
+        '기준 35점 이하 · 클릭하여 기준 조절 및 상세 확인',
+        'smart-discard.html', 'var(--error)')
+    }
+
+    // 2. Theater prep
+    if (planner && planner.theater_prep && planner.theater_prep.length > 0) {
+      const urgent = planner.theater_prep.filter(r => r.priority <= 2)
+      if (urgent.length > 0) {
+        cards += actionCard('theater_comedy', '환상극 준비 필요 (' + urgent.length + '개 항목)',
+          urgent[0].title + (urgent.length > 1 ? ' 외 ' + (urgent.length-1) + '개' : ''),
+          'planner.html', 'var(--tertiary)')
       }
-      fileInput.value = ''
-    })
+    } else if (planner) {
+      cards += actionCard('check_circle', '환상극 준비 완료',
+        '모든 원소 캐릭터가 충분합니다. 최적 조합을 확인하세요.',
+        'planner.html', 'var(--secondary)')
+    }
+
+    // 3. Daily resin
+    if (planner && planner.daily_plan && planner.daily_plan.length > 0) {
+      const top = planner.daily_plan[0]
+      cards += actionCard('bolt', '오늘의 레진: ' + top.title,
+        top.reason + (planner.daily_plan.length > 1 ? ' 외 ' + (planner.daily_plan.length-1) + '개 일정' : ''),
+        'planner.html', 'var(--primary)')
+    }
+
+    // 4. Abyss
+    cards += actionCard('swords', '나선비경 팀 최적화',
+      '보유 캐릭터 기반 12층 클리어 최적 조합을 확인하세요.',
+      'abyss.html', 'var(--hydro)')
+
+    // 5. Summary line
+    cards += `<div style="font-size:0.75rem;color:var(--on-surface-variant);padding:0.5rem 0">
+      캐릭터 ${chars.length}명 · 성유물 ${fmt(artifacts.length)}개 · 무기 ${weapons.length}개 보유 중
+    </div>`
+
+    todoEl.innerHTML = cards
   }
+
+  // Build shortcuts
+  const shortcutsEl = $('#home-shortcuts')
+  if (shortcutsEl) {
+    shortcutsEl.innerHTML = [
+      shortcut('diamond', '성유물', 'artifacts.html', 'var(--secondary)'),
+      shortcut('auto_delete', '스마트 폐기', 'smart-discard.html', 'var(--error)'),
+      shortcut('theater_comedy', '환상극', 'theater.html', 'var(--tertiary)'),
+      shortcut('event_note', '플래너', 'planner.html', 'var(--primary)'),
+      shortcut('swords', '나선비경', 'abyss.html', 'var(--hydro)'),
+    ].join('')
+  }
+
+}
+
+async function autoOptimizeAfterImport() {
+  showToast('환상극 + 나선비경 최적화를 자동 실행합니다...')
+  try {
+    const res = await fetch('/api/optimize/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'all'}) })
+    if (res.ok) {
+      const { job_id } = await res.json()
+      // Poll until done (max 60s)
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        try {
+          const status = await (await fetch(`/api/optimize/status/${job_id}`)).json()
+          if (status.status === 'done' || status.status === 'error') break
+        } catch { break }
+      }
+    }
+  } catch {}
+}
+
+function actionCard(icon, title, desc, href, color) {
+  return `<a href="${href}" style="display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--surface-container);border-radius:var(--r-xl);text-decoration:none;transition:transform 0.15s,background 0.15s;border-left:3px solid ${color}" onmouseover="this.style.transform='translateX(4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
+    <span class="material-symbols-outlined" style="font-size:1.5rem;color:${color};flex-shrink:0">${icon}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:0.875rem;font-weight:700;color:var(--on-surface)">${title}</div>
+      <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.125rem">${desc}</div>
+    </div>
+    <span class="material-symbols-outlined" style="font-size:1rem;color:var(--outline);flex-shrink:0">chevron_right</span>
+  </a>`
+}
+
+function shortcut(icon, label, href, color) {
+  return `<a href="${href}" style="display:flex;flex-direction:column;align-items:center;gap:0.5rem;padding:1rem;background:var(--surface-container);border-radius:var(--r-xl);text-decoration:none;transition:transform 0.15s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+    <span class="material-symbols-outlined" style="font-size:1.5rem;color:${color}">${icon}</span>
+    <span style="font-size:0.75rem;font-weight:600;color:var(--on-surface)">${label}</span>
+  </a>`
 }
 
 // --- Page: Characters ---
@@ -279,7 +322,7 @@ async function initCharacters() {
   const nameEl = $('.character-name')
   if (!nameEl) return
 
-  await loadCharNameMap()
+  // charNameEnToKo loaded statically
 
   const params = new URLSearchParams(window.location.search)
   const charId = params.get('id') || '1'
@@ -409,12 +452,272 @@ const setNameKo = {
   MartialArtist: '무인', Gambler: '노름꾼', Scholar: '학사',
 }
 
+const charNameEnToKo = {
+  KamisatoAyaka:'카미사토 아야카',Jean:'진',Lisa:'리사',Barbara:'바바라',Kaeya:'케이아',
+  Diluc:'다이루크',Razor:'레이저',Amber:'엠버',Venti:'벤티',Xiangling:'향릉',Beidou:'북두',
+  Xingqiu:'행추',Xiao:'소',Ningguang:'응광',Klee:'클레',Zhongli:'종려',Fischl:'피슬',
+  Bennett:'베넷',Tartaglia:'타르탈리아',Noelle:'노엘',Qiqi:'치치',Chongyun:'중운',
+  Ganyu:'감우',Albedo:'알베도',Diona:'디오나',Mona:'모나',Keqing:'각청',Sucrose:'설탕',
+  Xinyan:'신염',Rosaria:'로자리아',HuTao:'호두',KaedeharaKazuha:'카에데하라 카즈하',
+  Yanfei:'연비',Yoimiya:'요이미야',Thoma:'토마',Eula:'유라',RaidenShogun:'라이덴 쇼군',
+  Sayu:'사유',SangonomiyaKokomi:'산고노미야 코코미',Gorou:'고로',KujouSara:'쿠죠 사라',
+  AratakiItto:'아라타키 이토',YaeMiko:'야에 미코',ShikanoinHeizou:'시카노인 헤이조',
+  Yelan:'야란',Kirara:'키라라',Aloy:'에일로이',Shenhe:'신학',YunJin:'운근',
+  KukiShinobu:'쿠키 시노부',KamisatoAyato:'카미사토 아야토',Collei:'콜레이',Dori:'도리',
+  Tighnari:'타이나리',Nilou:'닐루',Cyno:'사이노',Candace:'캔디스',Nahida:'나히다',
+  Layla:'레일라',Wanderer:'방랑자',Faruzan:'파루잔',Yaoyao:'요요',Alhaitham:'알하이탐',
+  Dehya:'데히야',Mika:'미카',Kaveh:'카베',Baizhu:'백출',Lynette:'리넷',Lyney:'리니',
+  Freminet:'프레미네',Wriothesley:'라이오슬리',Neuvillette:'느비예트',Charlotte:'샤를로트',
+  Furina:'푸리나',Chevreuse:'슈브르즈',Navia:'나비아',Gaming:'가명',Xianyun:'한운',
+  Chiori:'치오리',Sigewinne:'시그윈',Arlecchino:'아를레키노',Sethos:'세토스',
+  Clorinde:'클로린드',Emilie:'에밀리',Kachina:'카치나',Kinich:'키니치',Mualani:'말라니',
+  Xilonen:'실로닌',Chasca:'차스카',Ororon:'올로룬',Mavuika:'마비카',Citlali:'시틀라리',
+  LanYan:'남연',YumemizukiMizuki:'유메미즈키 미즈키',Iansan:'얀사',Varesa:'바레사',
+  Escoffier:'에스코피에',Ifa:'이파',Skirk:'스커크',Dahlia:'달리아',Ineffa:'이네파',
+  Lauma:'라우마',Flins:'플린스',Aino:'아이노',Nefer:'네페르',Durin:'두린',
+  Jahoda:'야호다',Columbina:'콜롬비나',Zibai:'자백',Illuga:'일루가',Varka:'바르카',
+}
+
+const weaponNameKo = {
+  DullBlade:"무인검",
+  SilverSword:"실버 소드",
+  CoolSteel:"차가운 칼날",
+  HarbingerOfDawn:"여명신검",
+  TravelersHandySword:"여행자의 검",
+  DarkIronSword:"암철검",
+  FilletBlade:"흘호 생선회칼",
+  SkyriderSword:"비천어검",
+  FavoniusSword:"페보니우스 검",
+  TheFlute:"피리검",
+  SacrificialSword:"제례검",
+  RoyalLongsword:"왕실의 장검",
+  LionsRoar:"용의 포효",
+  PrototypeRancour:"참암 프로토타입",
+  IronSting:"강철 벌침",
+  BlackcliffLongsword:"흑암 장검",
+  TheBlackSword:"칠흑검",
+  TheAlleyFlash:"뒷골목의 섬광",
+  SwordOfDescension:"강림의 검",
+  FesteringDesire:"부식의 검",
+  AmenomaKageuchi:"아메노마 카게우치가타나",
+  CinnabarSpindle:"진사의 방추",
+  KagotsurubeIsshin:"카고츠루베 잇신",
+  SapwoodBlade:"원목 검",
+  XiphosMoonlight:"크시포스의 달빛",
+  ToukabouShigure:"꽃잎비",
+  WolfFang:"늑대 송곳니",
+  FinaleOfTheDeep:"해연의 피날레",
+  FleuveCendreFerryman:"잿빛의 강 뱃사공",
+  TheDockhandsAssistant:"뱃도랑 장검",
+  SwordOfNarzissenkreuz:"수선화 십자검",
+  SturdyBone:"견고한 골검",
+  FluteOfEzpitzal:"에스피찰의 피리",
+  CalamityOfEshu:"에슈의 재앙",
+  SerenitysCall:"고요한 휘파람",
+  MoonweaversDawn:"달을 엮는 자의 새벽빛",
+  AquilaFavonia:"매의 검",
+  SkywardBlade:"천공의 검",
+  FreedomSworn:"오래된 자유의 서약",
+  SummitShaper:"참봉의 칼날",
+  PrimordialJadeCutter:"반암결록",
+  MistsplitterReforged:"안개를 가르는 회광",
+  HaranGeppakuFutsu:"하란 월백의 후츠",
+  KeyOfKhajNisut:"성현의 열쇠",
+  LightOfFoliarIncision:"잎을 가르는 빛",
+  SplendorOfTranquilWaters:"고요히 샘솟는 빛",
+  UrakuMisugiri:"우라쿠의 미스기리",
+  Absolution:"사면",
+  PeakPatrolSong:"바위산을 맴도는 노래",
+  Azurelight:"창백한 섬광",
+  AthameArtis:"검은 침식",
+  LightbearingMoonshard:"신월의 달빛",
+  WasterGreatsword:"훈련용 대검",
+  OldMercsPal:"용병 중검",
+  FerrousShadow:"강철의 그림자",
+  BloodtaintedGreatsword:"드래곤 블러드 소드",
+  WhiteIronGreatsword:"백철 대검",
+  DebateClub:"훌륭한 대화수단",
+  SkyriderGreatsword:"비천대어검",
+  FavoniusGreatsword:"페보니우스 대검",
+  TheBell:"시간의 검",
+  SacrificialGreatsword:"제례 대검",
+  RoyalGreatsword:"왕실의 대검",
+  Rainslasher:"빗물 베기",
+  PrototypeArchaic:"고화 프로토타입",
+  Whiteblind:"백영검",
+  BlackcliffSlasher:"흑암참도",
+  SerpentSpine:"이무기 검",
+  LithicBlade:"천암고검",
+  SnowTombedStarsilver:"설장의 성은",
+  LuxuriousSeaLord:"진주를 문 해황",
+  KatsuragikiriNagamasa:"카츠라기를 벤 나가마사",
+  MakhairaAquamarine:"물빛 마카이라",
+  Akuoumaru:"아쿠오마루",
+  ForestRegalia:"숲의 리게일리어",
+  MailedFlower:"꽃 장식 대검",
+  TalkingStick:"대화봉",
+  TidalShadow:"파도 그림자 대검",
+  UltimateOverlordsMegaMagicSword:"「슈퍼 울트라 패왕 마검」",
+  PortablePowerSaw:"휴대용 체인톱",
+  FruitfulHook:"수확의 갈고리",
+  EarthShaker:"대지를 울리는 자",
+  FlameForgedInsight:"불로 벼린 지혜",
+  MasterKey:"만능 열쇠",
+  SkywardPride:"천공의 긍지",
+  WolfsGravestone:"늑대의 말로",
+  SongOfBrokenPines:"송뢰가 울릴 무렵",
+  TheUnforged:"무공의 검",
+  RedhornStonethresher:"쇄석의 붉은 뿔",
+  BeaconOfTheReedSea:"갈대 바다의 등대",
+  Verdict:"판정",
+  FangOfTheMountainKing:"산왕의 엄니",
+  AThousandBlazingSuns:"타오르는 천 개의 태양",
+  GestOfTheMightyWolf:"늑대의 무용담",
+  BeginnersProtector:"초보자의 장창",
+  IronPoint:"철촉창",
+  WhiteTassel:"백술창",
+  Halberd:"미늘창",
+  BlackTassel:"흑술창",
+  DragonsBane:"용학살창",
+  PrototypeStarglitter:"별의 낫 프로토타입",
+  CrescentPike:"유월창",
+  BlackcliffPole:"흑암창",
+  Deathmatch:"결투의 창",
+  LithicSpear:"천암장창",
+  FavoniusLance:"페보니우스 장창",
+  RoyalSpear:"왕실의 장창",
+  DragonspineSpear:"용의 척추",
+  KitainCrossSpear:"키타인 십자창",
+  TheCatch:"「어획」",
+  WavebreakersFin:"파도 베는 지느러미",
+  Moonpiercer:"달을 꿰뚫는 화살",
+  MissiveWindspear:"날카로운 바람의 서신",
+  BalladOfTheFjords:"협만의 노래",
+  RightfulReward:"공의의 보상",
+  DialoguesOfTheDesertSages:"위대한 사막 현자의 대답",
+  ProspectorsDrill:"탐사용 드릴",
+  MountainBracingBolt:"산을 고정하는 못",
+  FootprintOfTheRainbow:"무지개의 행적",
+  TamayurateiNoOhanashi:"쉼터의 이야기꾼",
+  ProspectorsShovel:"채굴의 삽",
+  SacrificersStaff:"신성한 제사의 지팡이",
+  StaffOfHoma:"호마의 지팡이",
+  SkywardSpine:"천공의 마루",
+  VortexVanquisher:"관홍의 창",
+  PrimordialJadeWingedSpear:"화박연",
+  CalamityQueller:"식재",
+  EngulfingLightning:"예초의 번개",
+  StaffOfTheScarletSands:"적색 사막의 지팡이",
+  CrimsonMoonsSemblance:"붉은 달의 형상",
+  LumidouceElegy:"등방울꽃의 애가",
+  SymphonistOfScents:"맛의 지휘자",
+  FracturedHalo:"파멸의 빛고리",
+  BloodsoakedRuins:"피로 물든 성",
+  ApprenticesNotes:"학도의 노트",
+  PocketGrimoire:"포켓 주술서",
+  MagicGuide:"마도 서론",
+  ThrillingTalesOfDragonSlayers:"드래곤 슬레이어 영웅담",
+  OtherworldlyStory:"이세계 여행기",
+  EmeraldOrb:"비취 오브",
+  TwinNephrite:"1급 보옥",
+  FavoniusCodex:"페보니우스 비전",
+  TheWidsith:"음유시인의 악장",
+  SacrificialFragments:"제례의 악장",
+  RoyalGrimoire:"왕실의 비전록",
+  SolarPearl:"일월의 정수",
+  PrototypeAmber:"황금 호박 프로토타입",
+  MappaMare:"만국 항해용해도",
+  BlackcliffAgate:"흑암 홍옥",
+  EyeOfPerception:"소심",
+  WineAndSong:"뒷골목의 술과 시",
+  Frostbearer:"인동의 열매",
+  DodocoTales:"도도코 이야기집",
+  HakushinRing:"하쿠신의 고리",
+  OathswornEye:"맹세의 눈동자",
+  WanderingEvenstar:"방랑하는 저녁별",
+  FruitOfFulfillment:"충만의 열매",
+  SacrificialJade:"제사의 옥",
+  FlowingPurity:"순수한 달빛 물결",
+  BalladOfTheBoundlessBlue:"끝없는 쪽빛의 노래",
+  AshGravenDrinkingHorn:"푸른 문양 뿔잔",
+  WaveridingWhirl:"돌아오는 파도",
+  RingOfYaxche:"약스체의 고리",
+  EtherlightSpindlelute:"금빛 류트",
+  BlackmarrowLantern:"검은 골수의 등불",
+  DawningFrost:"서릿빛 새벽",
+  SkywardAtlas:"천공의 두루마리",
+  LostPrayerToTheSacredWinds:"사풍 원서",
+  MemoryOfDust:"속세의 자물쇠",
+  JadefallsSplendor:"벽락의 옥",
+  EverlastingMoonglow:"불멸의 달빛",
+  KagurasVerity:"카구라의 진의",
+  AThousandFloatingDreams:"떠오르는 천일 밤의 꿈",
+  TulaytullahsRemembrance:"툴레이툴라의 기억",
+  CashflowSupervision:"현금 흐름 감독",
+  TomeOfTheEternalFlow:"영원히 샘솟는 법전",
+  CranesEchoingCall:"학의 여음",
+  SurfsUp:"서핑 타임",
+  StarcallersWatch:"별지기의 시선",
+  SunnyMorningSleepIn:"나른한 새해",
+  VividNotions:"빛나는 마음",
+  NightweaversLookingGlass:"밤을 엮는 거울",
+  ReliquaryOfTruth:"진실의 함",
+  NocturnesCurtainCall:"막간의 야상곡",
+  HuntersBow:"사냥활",
+  SeasonedHuntersBow:"노련의 사냥활",
+  RavenBow:"까마귀깃 활",
+  SharpshootersOath:"신궁의 서약",
+  RecurveBow:"곡궁",
+  Slingshot:"탄궁",
+  Messenger:"전령",
+  FavoniusWarbow:"페보니우스 활",
+  TheStringless:"절현",
+  SacrificialBow:"제례활",
+  RoyalBow:"왕실의 장궁",
+  Rust:"녹슨 활",
+  PrototypeCrescent:"담월 프로토타입",
+  CompoundBow:"강철궁",
+  BlackcliffWarbow:"흑암 배틀 보우",
+  TheViridescentHunt:"청록의 사냥활",
+  AlleyHunter:"뒷골목 사냥꾼",
+  FadingTwilight:"노을",
+  MitternachtsWaltz:"유야의 왈츠",
+  WindblumeOde:"바람 꽃의 노래",
+  Hamayumi:"파마궁",
+  Predator:"포식자",
+  MouunsMoon:"모운의 달",
+  KingsSquire:"왕의 측근",
+  EndOfTheLine:"메마른 연못",
+  IbisPiercer:"꿰뚫는 따오기 부리",
+  ScionOfTheBlazingSun:"뜨거운 태양의 후손",
+  SongOfStillness:"고요한 노래",
+  Cloudforged:"축운",
+  RangeGauge:"거리 측정기",
+  FlowerWreathedFeathers:"꽃장식 깃",
+  ChainBreaker:"사슬 파괴자",
+  SequenceOfSolitude:"침묵의 사격",
+  SnareHook:"그물을 뚫는 화살",
+  RainbowSerpentsRainBow:"무지개뱀의 현",
+  SkywardHarp:"천공의 날개",
+  AmosBow:"아모스의 활",
+  ElegyForTheEnd:"종말 탄식의 노래",
+  PolarStar:"극지의 별",
+  AquaSimulacra:"약수",
+  ThunderingPulse:"비뢰의 고동",
+  HuntersPath:"사냥꾼의 길",
+  TheFirstGreatMagic:"최초의 대마술",
+  SilvershowerHeartstrings:"심금을 울리는 하얀 비",
+  AstralVulturesCrimsonPlumage:"붉은 깃 별독수리",
+  TheDaybreakChronicles:"여명이 트는 역사",
+  QuantumCatalyst:"Quantum Cat-alyst",
+}
+
 // --- Page: Artifacts ---
 async function initArtifacts() {
   const grid = $('#artifact-grid')
   if (!grid) return
 
-  await loadCharNameMap()
+  // charNameEnToKo loaded statically
 
   const artifacts = await api.get('/artifacts')
   if (!artifacts) return
@@ -497,7 +800,7 @@ async function initArtifacts() {
           <div class="artifact-card__top">
             <div class="artifact-card__icon-wrap">
               <div class="artifact-card__icon artifact-card__icon--${tint}">
-                <img alt="${a.name}" src="${a.icon || `assets/slots/icon_slot_${a.slot}.png`}"/>
+                <img alt="${a.name}" src="assets/artifacts/${a.set_name}/${a.slot}.png" onerror="this.src='${a.icon || `assets/slots/icon_slot_${a.slot}.png`}'" style="width:2rem;height:2rem;object-fit:contain"/>
               </div>
               <span class="artifact-card__level">+${a.level}</span>
             </div>
@@ -927,23 +1230,12 @@ function showAddBuildForm() {
   })
 }
 
-// --- Name Translation Maps ---
-let charNameKoToEn = {}
-let charNameEnToKo = {}
-
-async function loadCharNameMap() {
-  try {
-    const res = await fetch('/api/character-names')
-    if (!res.ok) return
-    const names = await res.json()
-    names.forEach((n) => {
-      charNameKoToEn[n.name_ko] = n.name_en
-      charNameKoToEn[n.name_en] = n.name_en
-      charNameEnToKo[n.name_en] = n.name_ko
-      charNameEnToKo[n.name_ko] = n.name_ko
-    })
-  } catch {}
-}
+// --- Name Translation Maps (reverse from charNameEnToKo) ---
+const charNameKoToEn = {}
+Object.entries(charNameEnToKo).forEach(([en, ko]) => {
+  charNameKoToEn[ko] = en
+  charNameKoToEn[en] = en
+})
 
 const elementMap = {
   Pyro: '불', Hydro: '물', Electro: '번개', Cryo: '얼음',
@@ -994,7 +1286,7 @@ async function initTheater() {
   const container = $('#theater-content')
   if (!container) return
 
-  await loadCharNameMap()
+  // charNameEnToKo loaded statically
 
   try {
     const res = await fetch('/api/theater')
@@ -1274,7 +1566,7 @@ async function initSmartDiscard() {
             <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
               <div class="artifact-card__icon-wrap">
                 <div class="artifact-card__icon artifact-card__icon--red">
-                  <span class="material-symbols-outlined" style="font-size:1.5rem">${slotIcon}</span>
+                  <img src="assets/artifacts/${a.set_name}/${a.slot}.png" alt="${displaySlot}" style="width:2rem;height:2rem;object-fit:contain" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'material-symbols-outlined\\' style=\\'font-size:1.5rem\\'>${slotIcon}</span>'"/>
                 </div>
                 <span class="artifact-card__level">+${a.level}</span>
               </div>

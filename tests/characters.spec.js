@@ -1,15 +1,18 @@
 const { test, expect } = require('@playwright/test');
 
+let charTestCounter = 0;
+
 test.describe('Characters page', () => {
   test.beforeEach(async ({ page }) => {
-    // Ensure test user exists and login
-    await page.request.post('/api/register', { data: { username: 'pw_test_user', password: 'testpass1234' } });
-    await page.request.post('/api/login', { data: { username: 'pw_test_user', password: 'testpass1234' } });
+    // Use unique user to avoid stale data from previous runs
+    const user = `char_test_${Date.now()}_${charTestCounter++}`;
+    await page.request.post('/api/register', { data: { username: user, password: 'testpass1234' } });
+    await page.request.post('/api/login', { data: { username: user, password: 'testpass1234' } });
 
-    // Create test character since there is no seed data
+    // Create test character using PascalCase key (GOOD format) for localization
     await page.request.post('/api/characters', {
       data: {
-        name: 'Raiden Shogun', name_ko: '라이덴 쇼군', element: 'Electro',
+        name: 'RaidenShogun', element: 'Electro',
         weapon_type: 'Polearm', level: 90, weapon_name: 'Engulfing Lightning',
         hp: 19445, atk: 2104, crit_rate: 64.2, crit_dmg: 148.5,
         energy_recharge: 274.1, elemental_mastery: 105,
@@ -28,6 +31,7 @@ test.describe('Characters page', () => {
   test('displays character portrait', async ({ page }) => {
     const portrait = page.locator('.character-portrait img');
     await expect(portrait).toBeVisible();
+    // alt is set via localizeCharName which translates PascalCase key to Korean
     await expect(portrait).toHaveAttribute('alt', /라이덴 쇼군/);
   });
 

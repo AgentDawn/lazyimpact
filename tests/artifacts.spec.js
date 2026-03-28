@@ -34,10 +34,13 @@ const TEST_ARTIFACTS = [
   },
 ];
 
+let artTestCounter = 0;
+
 test.describe('Artifacts page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.request.post('/api/register', { data: { username: 'pw_test_user', password: 'testpass1234' } });
-    await page.request.post('/api/login', { data: { username: 'pw_test_user', password: 'testpass1234' } });
+    const user = `art_test_${Date.now()}_${artTestCounter++}`;
+    await page.request.post('/api/register', { data: { username: user, password: 'testpass1234' } });
+    await page.request.post('/api/login', { data: { username: user, password: 'testpass1234' } });
 
     // Create test artifacts since there is no seed data
     for (const art of TEST_ARTIFACTS) {
@@ -60,7 +63,7 @@ test.describe('Artifacts page', () => {
 
   test('artifact cards contain expected data', async ({ page }) => {
     const allText = await page.locator('#artifact-grid').textContent();
-    expect(allText).toContain('Dreaming Steelbloom');
+    // Cards now display the set name as the title instead of the artifact name
     expect(allText).toContain('Gilded Dreams');
     // API-created artifacts render the raw value (no comma formatting)
     expect(allText).toContain('4780');
@@ -105,15 +108,15 @@ test.describe('Artifacts page', () => {
     await expect(tabs.first()).not.toHaveClass(/sort-tab--active/);
   });
 
-  test('Add Artifact button exists', async ({ page }) => {
-    await expect(page.locator('#btn-add-artifact')).toBeVisible();
-  });
-
   test('delete artifact removes card', async ({ page }) => {
     const countBefore = await page.locator('.artifact-card').count();
     await page.locator('.artifact-card__edit').first().click();
-    // Wait for re-render
-    await page.waitForTimeout(500);
+    // Wait for delete API call + full re-render cycle
+    await page.waitForFunction(
+      (expected) => document.querySelectorAll('.artifact-card').length === expected,
+      countBefore - 1,
+      { timeout: 10000 },
+    );
     const countAfter = await page.locator('.artifact-card').count();
     expect(countAfter).toBe(countBefore - 1);
   });

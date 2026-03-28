@@ -14,7 +14,6 @@ const PAGES = [
   { name: 'Teams', path: '/teams.html', title: 'Teams' },
   { name: 'Theater', path: '/theater.html', title: 'Theater' },
   { name: 'Planner', path: '/planner.html', title: 'Planner' },
-  { name: 'Scanner', path: '/scanner.html', title: 'Scanner' },
   { name: 'Smart Discard', path: '/smart-discard.html', title: 'Smart Discard' },
 ];
 
@@ -39,26 +38,14 @@ test.describe('Navigation', () => {
   test('nav links navigate between pages', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await page.click('a.nav__link[href="characters.html"]');
-    await expect(page).toHaveURL(/characters/);
-
-    await page.click('a.nav__link[href="artifacts.html"]');
-    await expect(page).toHaveURL(/artifacts/);
-
-    await page.click('a.nav__link[href="weapons.html"]');
-    await expect(page).toHaveURL(/weapons/);
-
-    await page.click('a.nav__link[href="teams.html"]');
-    await expect(page).toHaveURL(/teams/);
-
-    await page.click('a.nav__link[href="theater.html"]');
-    await expect(page).toHaveURL(/theater/);
+    await page.click('a.nav__link[href="smart-discard.html"]');
+    await expect(page).toHaveURL(/smart-discard/);
 
     await page.click('a.nav__link[href="planner.html"]');
     await expect(page).toHaveURL(/planner/);
 
-    await page.click('a.nav__link[href="scanner.html"]');
-    await expect(page).toHaveURL(/scanner/);
+    await page.click('a.nav__link[href="abyss.html"]');
+    await expect(page).toHaveURL(/abyss/);
 
     await page.click('a.nav__link[href="index.html"]');
     await expect(page).toHaveURL(/index|\/$/);
@@ -71,11 +58,11 @@ test.describe('Navigation', () => {
   });
 
   test('active nav link is highlighted on each page', async ({ page }) => {
-    await page.goto('/artifacts.html', { waitUntil: 'domcontentloaded' });
+    await page.goto('/planner.html', { waitUntil: 'domcontentloaded' });
     // JS sets active class dynamically
     await page.waitForSelector('.nav__link--active');
     const activeLink = page.locator('.nav__link--active');
-    await expect(activeLink).toHaveAttribute('href', 'artifacts.html');
+    await expect(activeLink).toHaveAttribute('href', 'planner.html');
   });
 });
 
@@ -101,12 +88,11 @@ test.describe('Home page - API integration', () => {
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#home-char-avatars img');
-    // At least 1 character avatar (shared user may have more from other tests)
-    const avatars = page.locator('#home-char-avatars img');
-    const count = await avatars.count();
+    // Home page now shows action cards / shortcuts instead of character avatars
+    // Wait for the shortcuts section to render
+    await page.waitForSelector('#home-shortcuts a', { timeout: 10000 });
+    const shortcuts = page.locator('#home-shortcuts a');
+    const count = await shortcuts.count();
     expect(count).toBeGreaterThanOrEqual(1);
-    // Artifact count
-    await expect(page.locator('#home-artifact-count')).not.toHaveText('—');
   });
 });

@@ -22,8 +22,7 @@
         <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
         <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
         <li><a href="planner.html" class="nav__link">Planner</a></li>
-        <li><a href="scanner.html" class="nav__link nav__link--active" data-i18n="nav.scanner">스캐너</a></li>
-      </ul>
+        </ul>
     </div>
     <div class="nav__actions">
       <button class="nav__icon-btn"><span class="material-symbols-outlined">settings</span></button>
@@ -107,7 +106,7 @@
           <div style="width:2rem;height:2rem;border-radius:50%;background:var(--primary-container);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:700;flex-shrink:0">1</div>
           <div>
             <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem">Irminsul 다운로드</h3>
-            <p style="font-size:0.75rem;color:var(--on-surface-variant)">GitHub에서 최신 릴리즈를 다운받아 관리자 권한으로 실행합니다.</p>
+            <p style="font-size:0.75rem;color:var(--on-surface-variant)"><a href="https://github.com/konkers/irminsul/releases" target="_blank" style="color:var(--primary)">Releases 페이지</a>에서 최신 버전의 .exe 파일을 받으세요. 다운로드 후 마우스 오른쪽 클릭 → 관리자 권한으로 실행합니다. 자세한 사용법은 <a href="https://konkers.github.io/irminsul/02-quickstart.html" target="_blank" style="color:var(--primary)">공식 문서</a>를 참고하세요.</p>
           </div>
         </div>
         <div style="display:flex;gap:1rem">
@@ -138,11 +137,6 @@
 
 <footer class="footer">
   <div class="footer__inner">
-    <ul class="footer__links">
-      <li><a href="#">Documentation</a></li>
-      <li><a href="#">Privacy Policy</a></li>
-      <li><a href="#">Changelog</a></li>
-    </ul>
     <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
   </div>
 </footer>
@@ -224,8 +218,11 @@
             <span>아티팩트: <strong style="color:var(--on-surface)">${result.artifacts || 0}</strong></span>
             <span>무기: <strong style="color:var(--on-surface)">${result.weapons || 0}</strong></span>
           </div>
-          <p style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.75rem;">성유물 페이지로 이동합니다...</p>`
-        setTimeout(() => { window.location.href = '/artifacts.html' }, 1500)
+          <p style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.75rem;">최적화 실행 중... 잠시 후 홈으로 이동합니다.</p>`
+        try {
+          await fetch('/api/optimize/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'all'}) })
+        } catch {}
+        setTimeout(() => { window.location.href = '/index.html' }, 2000)
       } catch (err) {
         resultDiv.innerHTML = `
           <div style="display:flex;align-items:center;gap:0.5rem">

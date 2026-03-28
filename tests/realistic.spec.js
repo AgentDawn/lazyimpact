@@ -347,7 +347,7 @@ test.describe('AR60 Character page Korean localization', () => {
     // Create just Raiden with weapon_name for the character page
     await page.request.post('/api/characters', {
       data: {
-        name: 'Raiden Shogun', name_ko: '라이덴 쇼군', element: 'Electro',
+        name: 'RaidenShogun', element: 'Electro',
         weapon_type: 'Polearm', level: 90, weapon_name: 'Engulfing Lightning',
         hp: 19445, atk: 2104, crit_rate: 64.2, crit_dmg: 148.5,
         energy_recharge: 274.1, elemental_mastery: 105,

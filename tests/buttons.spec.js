@@ -1,8 +1,11 @@
 const { test, expect } = require('@playwright/test');
 
+let btnTestCounter = 0;
+
 test.beforeEach(async ({ page }) => {
-  await page.request.post('/api/register', { data: { username: 'btn_test_user', password: 'testpass1234' } });
-  await page.request.post('/api/login', { data: { username: 'btn_test_user', password: 'testpass1234' } });
+  const user = `btn_test_${Date.now()}_${btnTestCounter++}`;
+  await page.request.post('/api/register', { data: { username: user, password: 'testpass1234' } });
+  await page.request.post('/api/login', { data: { username: user, password: 'testpass1234' } });
 });
 
 test.describe('Characters page buttons', () => {
@@ -55,42 +58,6 @@ test.describe('Artifacts page buttons', () => {
         level: 20, main_stat_type: 'ATK', main_stat_value: '311',
       },
     });
-  });
-
-  test('Add Artifact button opens modal', async ({ page }) => {
-    await page.goto('/artifacts.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.artifact-card', { timeout: 15000 });
-    const addBtn = page.locator('#btn-add-artifact');
-    await expect(addBtn).toBeVisible();
-    await addBtn.click();
-    await expect(page.locator('.modal-backdrop.is-open')).toBeVisible();
-    await expect(page.locator('.modal__title')).toHaveText('성유물 추가');
-  });
-
-  test('Add Artifact modal can be closed', async ({ page }) => {
-    await page.goto('/artifacts.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.artifact-card', { timeout: 15000 });
-    await page.click('#btn-add-artifact');
-    await expect(page.locator('.modal-backdrop.is-open')).toBeVisible();
-    await page.click('.modal__close');
-    await page.waitForTimeout(400);
-    expect(await page.locator('.modal-backdrop.is-open').count()).toBe(0);
-  });
-
-  test('Add Artifact form submits', async ({ page }) => {
-    await page.goto('/artifacts.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.artifact-card', { timeout: 15000 });
-    const countBefore = await page.locator('.artifact-card').count();
-    await page.click('#btn-add-artifact');
-    await page.fill('input[name="name"]', 'Test Artifact');
-    await page.fill('input[name="set_name"]', 'Test Set');
-    await page.selectOption('select[name="slot"]', 'Flower');
-    await page.fill('input[name="main_stat_type"]', 'HP');
-    await page.fill('input[name="main_stat_value"]', '4999');
-    await page.click('.modal__form button[type="submit"]');
-    await page.waitForTimeout(1000);
-    const countAfter = await page.locator('.artifact-card').count();
-    expect(countAfter).toBe(countBefore + 1);
   });
 
   test('Delete artifact button works', async ({ page }) => {
@@ -192,7 +159,7 @@ test.describe('Navigation buttons', () => {
     await page.waitForSelector('.nav__link');
     const links = page.locator('.nav__link');
     const count = await links.count();
-    expect(count).toBeGreaterThanOrEqual(6);
+    expect(count).toBeGreaterThanOrEqual(4);
     for (let i = 0; i < count; i++) {
       await expect(links.nth(i)).toBeEnabled();
     }

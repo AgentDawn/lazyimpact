@@ -6,24 +6,53 @@ document.addEventListener('DOMContentLoaded', async () => {
   const prepEl = document.getElementById('theater-prep-content')
   const dailyEl = document.getElementById('daily-plan')
   const bpEl = document.getElementById('weekly-bp')
+  const rosterEl = document.getElementById('theater-roster')
   if (!prepEl) return
+
+  let plannerData = null
 
   try {
     const res = await fetch('/api/planner/recommend')
     if (res.status === 401) { window.location.href = '/login.html'; return }
     if (!res.ok) throw new Error()
-    const data = await res.json()
+    plannerData = await res.json()
 
-    renderTheaterPrep(prepEl, data.theater_prep || [])
-    renderDailyPlan(dailyEl, data.daily_plan || [], data.resin_total || 160)
-    renderBP(bpEl, data.bp_missions || [])
+    renderRoster(rosterEl, plannerData.roster_status || {}, plannerData.characters_needed || 0, plannerData.difficulty || 'transcendence')
+    renderTheaterPrep(prepEl, plannerData.theater_prep || [])
+    renderDailyPlan(dailyEl, plannerData.daily_plan || [], plannerData.resin_total || 160)
+    renderBP(bpEl, plannerData.bp_missions || [])
 
-    // Update resin display
     const resinDisplay = document.getElementById('resin-display')
-    if (resinDisplay) resinDisplay.textContent = `${data.resin_total || 160}/${data.resin_total || 160}`
+    if (resinDisplay) resinDisplay.textContent = `${plannerData.resin_total || 160}/${plannerData.resin_total || 160}`
   } catch (e) {
     prepEl.innerHTML = '<p style="color:var(--error)">데이터를 불러올 수 없습니다.</p>'
   }
+
+  // Gender preference
+  const genderSelect = document.getElementById('pref-gender')
+  if (genderSelect && plannerData) {
+    genderSelect.value = plannerData.prefer_gender || 'all'
+    genderSelect.addEventListener('change', async () => {
+      await fetch('/api/me/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefer_gender: genderSelect.value }),
+      })
+      location.reload()
+    })
+  }
+
+  // Load last theater optimization result
+  const resultEl = document.getElementById('theater-optimize-result')
+  try {
+    const latestRes = await fetch('/api/optimize/latest/theater')
+    if (latestRes.ok) {
+      const latestData = await latestRes.json()
+      if (latestData && latestData.members && latestData.members.length > 0) {
+        renderTheaterResult(resultEl, latestData)
+      }
+    }
+  } catch {}
 
   // Wire up theater DFS optimize button
   const btnTheater = document.getElementById('btn-theater-optimize')
@@ -31,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnTheater.addEventListener('click', async () => {
       const progressEl = document.getElementById('theater-optimize-progress')
       btnTheater.disabled = true
+      btnTheater.textContent = '최적화 실행 중...'
       try {
         const res = await fetch('/api/optimize/start', {
           method: 'POST',
@@ -43,21 +73,68 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         pollOptimizeJob(job_id, progressEl, (result) => {
           btnTheater.disabled = false
-          renderTheaterPrep(prepEl, result.theater_prep || [])
+          btnTheater.textContent = '환상극 최적화 (DFS 완전탐색)'
+          if (resultEl) renderTheaterResult(resultEl, result)
         })
       } catch {
         if (progressEl) progressEl.innerHTML = '<p style="color:var(--error)">최적화 시작 실패</p>'
         btnTheater.disabled = false
+        btnTheater.textContent = '환상극 최적화 (DFS 완전탐색)'
       }
     })
   }
 })
 
+// --- Roster Status ---
+function renderRoster(el, status, needed, difficulty) {
+  if (!el) return
+  const diffLabel = { normal: '보통', hard: '하드', transcendence: '초월' }
+  const elColors = {
+    '불': 'var(--pyro)', '물': 'var(--hydro)', '번개': 'var(--electro)',
+    '얼음': 'var(--cryo)', '바람': 'var(--anemo)', '바위': 'var(--geo)', '풀': 'var(--dendro)',
+  }
+
+  const entries = Object.entries(status)
+  if (entries.length === 0) {
+    el.innerHTML = '<p style="font-size:0.8125rem;color:var(--on-surface-variant)">시즌 원소 정보 없음</p>'
+    return
+  }
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+    <span style="font-size:0.75rem;color:var(--on-surface-variant)">난이도: <strong style="color:var(--on-surface)">${diffLabel[difficulty] || difficulty}</strong></span>
+    ${needed > 0 ? `<span style="font-size:0.75rem;color:var(--error);font-weight:600">${needed}캐릭터 부족</span>` : `<span style="font-size:0.75rem;color:var(--secondary);font-weight:600">준비 완료</span>`}
+  </div>`
+
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:0.5rem">'
+  entries.forEach(([el, s]) => {
+    const have = s.have || 0
+    const need = s.needed || 0
+    const ok = have >= need
+    const pct = need > 0 ? Math.min((have / need) * 100, 100) : 100
+    const color = elColors[el] || 'var(--primary)'
+    html += `<div style="padding:0.625rem;background:var(--surface-highest);border-radius:var(--r-md);border-left:3px solid ${color}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.375rem">
+        <span style="font-size:0.75rem;font-weight:700;color:${color}">${el}</span>
+        <span style="font-size:0.6875rem;font-weight:600;color:${ok ? 'var(--secondary)' : 'var(--error)'}">${have}/${need}</span>
+      </div>
+      <div style="height:4px;background:var(--surface-low);border-radius:2px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${ok ? 'var(--secondary)' : color};border-radius:2px;transition:width 0.3s"></div>
+      </div>
+    </div>`
+  })
+  html += '</div>'
+  el.innerHTML = html
+}
+
+// --- Theater Prep Recommendations ---
 function renderTheaterPrep(el, recs) {
   if (recs.length === 0) {
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;background:var(--surface-highest);border-radius:var(--r-md)">
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;background:rgba(77,219,206,0.08);border:1px solid rgba(77,219,206,0.2);border-radius:var(--r-md)">
       <span class="material-symbols-outlined" style="color:var(--secondary)">check_circle</span>
-      <span style="font-size:0.875rem">환상극 준비 완료! 모든 원소 캐릭터가 충분합니다.</span>
+      <div>
+        <div style="font-size:0.875rem;font-weight:600;color:var(--secondary)">환상극 준비 완료!</div>
+        <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.125rem">모든 원소 캐릭터가 충분합니다. 아래 최적화 버튼으로 최적 조합을 확인하세요.</div>
+      </div>
     </div>`
     return
   }
@@ -76,6 +153,117 @@ function renderTheaterPrep(el, recs) {
   }).join('')
 }
 
+// --- Theater DFS Result ---
+function renderTheaterResult(el, result) {
+  if (!el || !result) return
+
+  const members = result.members || []
+  if (members.length === 0) {
+    el.innerHTML = '<p style="color:var(--on-surface-variant);font-size:0.875rem">최적화 결과 없음</p>'
+    return
+  }
+
+  const season = result.season || {}
+  const totalScore = Math.round(result.total_score || 0)
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;padding:0.75rem;background:rgba(175,198,255,0.08);border:1px solid rgba(175,198,255,0.2);border-radius:var(--r-md)">
+    <div>
+      <div style="font-size:0.875rem;font-weight:700">${season.title || '환상극'} 최적 조합</div>
+      <div style="font-size:0.75rem;color:var(--on-surface-variant)">DFS 완전탐색 · ${members.length}캐릭터 선택</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:1.25rem;font-weight:800;color:var(--primary)">${totalScore.toLocaleString()}</div>
+      <div style="font-size:0.625rem;color:var(--on-surface-variant)">종합 점수</div>
+    </div>
+  </div>`
+
+  // Localization helpers (from app.js globals)
+  const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+  const lChar = (name) => {
+    if (!isKo) return name
+    if (typeof charNameEnToKo !== 'undefined' && charNameEnToKo[name]) return charNameEnToKo[name]
+    if (typeof localizeCharName === 'function') return localizeCharName(name)
+    return name
+  }
+  const lSet = (key) => (isKo && typeof setNameKo !== 'undefined') ? (setNameKo[key] || key) : key
+  const lSlot = (key) => {
+    const ko = { flower: '꽃', plume: '깃털', sands: '모래', goblet: '성배', circlet: '왕관' }
+    return isKo ? (ko[key] || key) : key
+  }
+  const lWeapon = (name) => {
+    if (!name) return ''
+    if (isKo && typeof weaponNameKo !== 'undefined' && weaponNameKo[name]) return weaponNameKo[name]
+    if (typeof localizeWeaponName === 'function') { const r = localizeWeaponName(name); if (r && r !== name) return r }
+    return name.replace(/([A-Z])/g, ' $1').trim()
+  }
+
+  const elColors = {
+    '불': 'var(--pyro)', '물': 'var(--hydro)', '번개': 'var(--electro)',
+    '얼음': 'var(--cryo)', '바람': 'var(--anemo)', '바위': 'var(--geo)', '풀': 'var(--dendro)',
+  }
+
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(16rem,1fr));gap:0.75rem">'
+  members.forEach((m) => {
+    const char = m.character || {}
+    const charName = lChar(char.name || '?')
+    const charLevel = char.level || 0
+    const charElement = char.element || ''
+    const score = Math.round(m.score || 0)
+    const weapon = m.weapon || {}
+    const artifacts = m.artifacts || []
+    const imps = m.improvements || []
+
+    const borderColor = elColors[charElement] || 'var(--outline-variant)'
+
+    // Artifact set summary (localized)
+    const setCounts = {}
+    artifacts.forEach(a => {
+      const sn = a.set_name || ''
+      if (sn) setCounts[sn] = (setCounts[sn] || 0) + 1
+    })
+    const setHTML = Object.entries(setCounts).map(([k, v]) => {
+      return `<span style="font-size:0.625rem;padding:0.125rem 0.375rem;background:var(--surface-low);border-radius:var(--r-sm)">${lSet(k)} ×${v}</span>`
+    }).join(' ')
+
+    // Improvements
+    const impHTML = imps.length > 0
+      ? imps.map(imp => `<div style="font-size:0.625rem;color:var(--error);display:flex;align-items:center;gap:0.25rem"><span class="material-symbols-outlined" style="font-size:0.75rem">warning</span>${imp}</div>`).join('')
+      : ''
+
+    // Artifact slot thumbnails
+    const slotOrder = ['flower', 'plume', 'sands', 'goblet', 'circlet']
+    const artBySlot = {}
+    artifacts.forEach(a => { if (a.slot) artBySlot[a.slot] = a })
+    const artThumbHTML = slotOrder.map(slot => {
+      const a = artBySlot[slot]
+      if (!a) return `<div style="width:2rem;height:2rem;border-radius:var(--r-sm);background:var(--surface-low);display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:0.875rem;color:var(--outline)">close</span></div>`
+      return `<img src="assets/artifacts/${a.set_name}/${slot}.png" alt="${lSlot(slot)}" title="${lSet(a.set_name)} · ${lSlot(slot)}" style="width:2rem;height:2rem;object-fit:contain;border-radius:var(--r-sm);background:var(--surface-low)" onerror="this.style.display='none'"/>`
+    }).join('')
+
+    html += `<div style="background:var(--surface-container);border-radius:var(--r-xl);overflow:hidden;border-top:3px solid ${borderColor}">
+      <div style="padding:0.875rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            ${charElement ? `<span style="font-size:0.625rem;font-weight:700;padding:0.125rem 0.375rem;border-radius:var(--r-sm);background:${borderColor};color:var(--surface)">${charElement}</span>` : ''}
+            <span style="font-size:0.875rem;font-weight:700">${charName}</span>
+            <span style="font-size:0.6875rem;color:var(--on-surface-variant)">Lv.${charLevel}</span>
+          </div>
+          <span style="font-size:0.875rem;font-weight:800;color:var(--primary)">${score.toLocaleString()}</span>
+        </div>
+        ${weapon.name ? `<div style="font-size:0.6875rem;color:var(--on-surface-variant);margin-bottom:0.5rem">무기: ${lWeapon(weapon.name)} Lv.${weapon.level || 0}</div>` : ''}
+        <div style="display:flex;gap:0.25rem;margin-bottom:0.5rem">${artThumbHTML}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.25rem;margin-bottom:0.375rem">${setHTML}</div>
+        ${impHTML}
+      </div>
+    </div>`
+  })
+  html += '</div>'
+
+  el.innerHTML = html
+  el.style.display = ''
+}
+
+// --- Daily Plan ---
 function renderDailyPlan(el, plan, total) {
   let used = 0
   const rows = plan.map((p) => {
@@ -90,7 +278,6 @@ function renderDailyPlan(el, plan, total) {
     </div>`
   }).join('')
 
-  // Resin bar
   const pct = Math.min((used / total) * 100, 100)
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">
@@ -102,6 +289,7 @@ function renderDailyPlan(el, plan, total) {
     ${rows}`
 }
 
+// --- BP ---
 function renderBP(el, missions) {
   if (missions.length === 0) {
     el.innerHTML = '<p style="font-size:0.875rem;color:var(--on-surface-variant)">기행 미션 없음</p>'

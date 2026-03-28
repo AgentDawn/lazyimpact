@@ -986,7 +986,7 @@ test.describe('Planner page UI', () => {
 
   test('planner nav link is active', async ({ page }) => {
     const active = page.locator('.nav__link--active');
-    await expect(active).toContainText('Planner');
+    await expect(active).toHaveAttribute('href', 'planner.html');
   });
 
   test('footer is visible', async ({ page }) => {

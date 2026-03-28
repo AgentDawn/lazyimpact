@@ -81,6 +81,7 @@ func main() {
 	// Async DFS optimization
 	mux.HandleFunc("POST /api/optimize/start", auth(handleOptimizeStart))
 	mux.HandleFunc("GET /api/optimize/status/{id}", auth(handleOptimizeStatus))
+	mux.HandleFunc("GET /api/optimize/latest/{type}", auth(handleOptimizeLatest))
 
 	// Weekly bosses
 	mux.HandleFunc("GET /api/weekly-bosses", handleListWeeklyBosses)
@@ -3945,8 +3946,8 @@ func handleOptimizeStart(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Type string `json:"type"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Type != "abyss" && body.Type != "theater") {
-		http.Error(w, `{"error":"type must be 'abyss' or 'theater'"}`, 400)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Type != "abyss" && body.Type != "theater" && body.Type != "all") {
+		http.Error(w, `{"error":"type must be 'abyss', 'theater', or 'all'"}`, 400)
 		return
 	}
 
@@ -3966,7 +3967,20 @@ func handleOptimizeStart(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		if body.Type == "abyss" {
+		if body.Type == "all" {
+			// Run both sequentially — each gets its own sub-job for result storage
+			theaterJobID := generateSessionID()
+			abyssJobID := generateSessionID()
+			rqliteExec([]string{
+				fmt.Sprintf("INSERT INTO optimize_jobs (id, user_id, type, status, progress) VALUES ('%s', %d, 'theater', 'pending', 0)", esc(theaterJobID), userIDInt),
+				fmt.Sprintf("INSERT INTO optimize_jobs (id, user_id, type, status, progress) VALUES ('%s', %d, 'abyss', 'pending', 0)", esc(abyssJobID), userIDInt),
+			})
+			updateJobProgress(jobID, 10)
+			runTheaterDFS(theaterJobID, uid)
+			updateJobProgress(jobID, 55)
+			runAbyssDFS(abyssJobID, uid)
+			updateJobDone(jobID, `{"theater_job":"`+theaterJobID+`","abyss_job":"`+abyssJobID+`"}`)
+		} else if body.Type == "abyss" {
 			runAbyssDFS(jobID, uid)
 		} else {
 			runTheaterDFS(jobID, uid)
@@ -3975,6 +3989,31 @@ func handleOptimizeStart(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
+}
+
+func handleOptimizeLatest(w http.ResponseWriter, r *http.Request) {
+	uid := getUserID(r)
+	jobType := r.PathValue("type")
+	if jobType != "abyss" && jobType != "theater" && jobType != "all" {
+		http.Error(w, `{"error":"type must be 'abyss', 'theater', or 'all'"}`, 400)
+		return
+	}
+	result, err := rqliteQueryParam(
+		"SELECT result FROM optimize_jobs WHERE user_id = ? AND type = ? AND status = 'done' ORDER BY finished_at DESC LIMIT 1",
+		uid, jobType,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	rows := parseRows(result)
+	if len(rows) == 0 || str(rows[0]["result"]) == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`null`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(str(rows[0]["result"])))
 }
 
 func handleOptimizeStatus(w http.ResponseWriter, r *http.Request) {
@@ -4846,14 +4885,37 @@ func runTheaterDFS(jobID, uid string) {
 		"UPDATE optimize_jobs SET status = 'running' WHERE id = '%s'", esc(jobID),
 	)})
 
-	// Read user preferences for theater difficulty
-	prefRaw, _ := rqliteQueryParam("SELECT theater_difficulty FROM users WHERE id = ?", uid)
+	// Read user preferences for theater difficulty + gender
+	prefRaw, _ := rqliteQueryParam("SELECT theater_difficulty, prefer_gender, include_default_males FROM users WHERE id = ?", uid)
 	prefRows := parseRows(prefRaw)
 	theaterDifficulty := "transcendence"
+	preferGender := "all"
+	includeDefaultMales := 1
 	if len(prefRows) > 0 {
 		if td := str(prefRows[0]["theater_difficulty"]); td != "" {
 			theaterDifficulty = td
 		}
+		if g := str(prefRows[0]["prefer_gender"]); g != "" {
+			preferGender = g
+		}
+		if dm := prefRows[0]["include_default_males"]; dm != nil {
+			includeDefaultMales = intVal(dm)
+		}
+	}
+
+	// Apply gender filter
+	if preferGender != "all" {
+		filtered := []map[string]interface{}{}
+		for _, c := range chars {
+			name := str(c["name"])
+			gender := getCharGender(name)
+			if gender == preferGender {
+				filtered = append(filtered, c)
+			} else if preferGender == "female" && includeDefaultMales == 1 && isDefaultMale(name) {
+				filtered = append(filtered, c)
+			}
+		}
+		chars = filtered
 	}
 
 	difficultyChars := map[string]int{

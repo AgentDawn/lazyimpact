@@ -15,15 +15,10 @@
     <div style="display:flex;align-items:center;gap:2rem;">
       <a href="index.html" class="nav__brand">LazyImpact</a>
       <ul class="nav__links">
-        <li><a href="index.html" class="nav__link nav__link--active" data-i18n="nav.home">홈</a></li>
-        <li><a href="characters.html" class="nav__link" data-i18n="nav.characters">캐릭터</a></li>
-        <li><a href="weapons.html" class="nav__link" data-i18n="nav.weapons">무기</a></li>
-        <li><a href="artifacts.html" class="nav__link" data-i18n="nav.artifacts">성유물</a></li>
-        <li><a href="teams.html" class="nav__link" data-i18n="nav.teams">팀</a></li>
-        <li><a href="theater.html" class="nav__link" data-i18n="nav.theater">환상극</a></li>
-        <li><a href="planner.html" class="nav__link">Planner</a></li>
+        <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
+        <li><a href="smart-discard.html" class="nav__link">스마트 폐기</a></li>
+        <li><a href="planner.html" class="nav__link">플래너</a></li>
         <li><a href="abyss.html" class="nav__link">나선비경</a></li>
-        <li><a href="scanner.html" class="nav__link" data-i18n="nav.scanner">스캐너</a></li>
       </ul>
     </div>
     <div class="nav__actions">
@@ -35,96 +30,87 @@
 
 <main class="main">
   <!-- Hero -->
-  <section style="text-align:center;padding:4rem 0 3rem">
-    <h1 style="font-size:2.5rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:0.75rem">LazyImpact <span style="color:var(--primary)">V2</span></h1>
-    <p style="color:var(--on-surface-variant);font-size:1rem;max-width:36rem;margin:0 auto" data-i18n="home.subtitle">Optimize your builds, manage artifacts, and plan team compositions for maximum damage output.</p>
+  <section style="padding:3rem 0 2rem">
+    <h1 style="font-size:2rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:0.5rem">오늘 뭐 하지?</h1>
+    <p style="color:var(--on-surface-variant);font-size:0.9375rem">LazyImpact가 분석한 오늘의 할 일입니다.</p>
   </section>
 
-  <!-- Import/Export -->
-  <div style="display:flex;gap:1rem;justify-content:center;margin-bottom:1rem">
-    <button class="btn-chip" id="btn-export" style="display:flex;align-items:center;gap:0.5rem">
-      <span class="material-symbols-outlined" style="font-size:1rem">download</span> <span data-i18n="home.export">Export Data</span>
-    </button>
-    <button class="btn-chip" id="btn-import" style="display:flex;align-items:center;gap:0.5rem">
-      <span class="material-symbols-outlined" style="font-size:1rem">upload</span> <span data-i18n="home.import">Import Data</span>
-    </button>
-    <input type="file" id="import-file" accept=".json" style="display:none"/>
-  </div>
+  <!-- Empty state: no data -->
+  <div id="home-empty-state" style="display:none;padding:0 0 2rem;">
+    <div style="max-width:36rem;background:var(--surface-high);border-radius:var(--r-xl);padding:2.5rem;">
+      <h2 style="font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">시작하기</h2>
+      <p style="font-size:0.8125rem;color:var(--on-surface-variant);margin-bottom:1.5rem">게임 데이터를 가져오면 성유물 분석, 환상극 최적화 등 모든 기능을 사용할 수 있습니다.</p>
 
-  <!-- Empty state import prompt (shown when no data) -->
-  <div id="home-empty-state" style="display:none;text-align:center;padding:2rem 1rem 0;">
-    <div style="max-width:28rem;margin:0 auto;background:var(--surface-high);border-radius:var(--r-xl);padding:2.5rem;">
-      <span class="material-symbols-outlined" style="font-size:3rem;color:var(--primary);margin-bottom:0.75rem;display:block;">database</span>
-      <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.5rem;">데이터를 가져오세요</h2>
-      <p style="font-size:0.875rem;color:var(--on-surface-variant);margin-bottom:1.5rem;">GOOD 포맷 JSON 파일을 업로드하여 캐릭터, 성유물, 무기 데이터를 가져올 수 있습니다.</p>
-      <div id="home-drop-zone" style="border:2px dashed var(--outline-variant);border-radius:var(--r-xl);padding:2rem;cursor:pointer;transition:all 0.2s;">
-        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--primary);margin-bottom:0.5rem;display:block;">upload_file</span>
-        <p style="font-size:0.875rem;color:var(--on-surface-variant);">클릭하거나 파일을 드래그하세요</p>
-        <p style="font-size:0.75rem;color:var(--outline);margin-top:0.25rem;">GOOD 포맷 (.json)</p>
-        <input type="file" id="home-import-file" accept=".json" style="display:none;"/>
+      <div style="display:flex;flex-direction:column;gap:1rem;margin-bottom:1.5rem">
+        <div style="display:flex;gap:0.75rem;align-items:start">
+          <div style="width:1.75rem;height:1.75rem;border-radius:50%;background:var(--primary-container);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0">1</div>
+          <div>
+            <h3 style="font-size:0.8125rem;font-weight:600">Irminsul 다운로드</h3>
+            <p style="font-size:0.6875rem;color:var(--on-surface-variant)"><a href="https://github.com/konkers/irminsul/releases" target="_blank" style="color:var(--primary)">Releases 페이지</a>에서 최신 버전의 <strong>.exe</strong> 파일을 받으세요. 다운로드 후 <strong>마우스 오른쪽 클릭 → 관리자 권한으로 실행</strong>하면 됩니다. 자세한 사용법은 <a href="https://konkers.github.io/irminsul/02-quickstart.html" target="_blank" style="color:var(--primary)">공식 문서</a>를 참고하세요.</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;align-items:start">
+          <div style="width:1.75rem;height:1.75rem;border-radius:50%;background:var(--primary-container);color:var(--on-primary);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0">2</div>
+          <div>
+            <h3 style="font-size:0.8125rem;font-weight:600">원신과 함께 스캔 → GOOD 포맷 내보내기</h3>
+            <p style="font-size:0.6875rem;color:var(--on-surface-variant)">Irminsul 실행 후 원신을 시작하면 자동 캡처. 완료 후 .json 파일로 내보내기</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;align-items:start">
+          <div style="width:1.75rem;height:1.75rem;border-radius:50%;background:var(--secondary-container);color:var(--on-secondary);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0">3</div>
+          <div>
+            <h3 style="font-size:0.8125rem;font-weight:600">여기에 업로드</h3>
+            <p style="font-size:0.6875rem;color:var(--on-surface-variant)">아래 영역에 JSON 파일을 업로드하면 자동으로 등록됩니다</p>
+          </div>
+        </div>
       </div>
-      <div id="home-import-result" style="display:none;margin-top:1rem;background:var(--surface-highest);border-radius:var(--r-md);padding:1rem;"></div>
+
+      <div id="home-drop-zone" style="border:2px dashed var(--outline-variant);border-radius:var(--r-xl);padding:1.5rem;cursor:pointer;transition:all 0.2s;text-align:center">
+        <span class="material-symbols-outlined" style="font-size:1.75rem;color:var(--primary);margin-bottom:0.375rem;display:block">upload_file</span>
+        <p style="font-size:0.8125rem;color:var(--on-surface-variant)">클릭하거나 파일을 드래그하세요</p>
+        <p style="font-size:0.6875rem;color:var(--outline);margin-top:0.25rem">GOOD 포맷 (.json)</p>
+        <input type="file" id="home-import-file" accept=".json" style="display:none"/>
+      </div>
+      <div id="home-import-result" style="display:none;margin-top:1rem;background:var(--surface-highest);border-radius:var(--r-md);padding:1rem"></div>
     </div>
   </div>
 
-  <!-- Quick Access Cards -->
-  <div id="home-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1.5rem;margin-top:1rem">
+  <!-- Action Guide (populated by JS) -->
+  <div id="home-actions" style="display:none">
+    <!-- Today's Actions -->
+    <section style="margin-bottom:2rem">
+      <h2 style="font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
+        <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--primary)">task_alt</span>
+        지금 해야 할 것
+      </h2>
+      <div id="home-todo-cards" style="display:flex;flex-direction:column;gap:0.75rem"></div>
+    </section>
 
-    <a href="characters.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
-      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
-        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--primary)">person</span>
-        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.characters">Characters</span> <span id="home-char-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
-      </div>
-      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.characters.desc">View character builds, stats, and run the artifact optimizer.</p>
-      <div id="home-char-avatars" style="display:flex;gap:0.5rem;margin-top:1rem"></div>
-    </a>
-
-    <a href="artifacts.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
-      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
-        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--secondary)">diamond</span>
-        <h2 style="font-size:1.125rem;font-weight:700" data-i18n="home.artifacts">Artifacts</h2>
-      </div>
-      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.artifacts.desc">Browse, filter, and evaluate your artifact collection.</p>
-      <div style="margin-top:1rem">
-        <span id="home-artifact-count" style="font-size:2rem;font-weight:800;color:var(--on-primary-container)">—</span>
-        <span style="font-size:0.75rem;color:var(--on-surface-variant);margin-left:0.5rem" data-i18n="home.artifacts.total">total artifacts</span>
-      </div>
-    </a>
-
-    <a href="weapons.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
-      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
-        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--tertiary)">swords</span>
-        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.weapons">Weapons</span> <span id="home-weapon-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
-      </div>
-      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.weapons.desc">Manage your weapon inventory and refinements.</p>
-    </a>
-
-    <a href="teams.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
-      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
-        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--error)">groups</span>
-        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.teams">Teams</span> <span id="home-team-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
-      </div>
-      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.teams.desc">Build and manage your Abyss-ready team compositions.</p>
-    </a>
-
-    <a href="builds.html" class="card card--container" style="text-decoration:none;transition:transform 0.2s,background 0.2s" onmouseover="this.style.transform='translateY(-4px)';this.style.background='var(--surface-high)'" onmouseout="this.style.transform='';this.style.background=''">
-      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
-        <span class="material-symbols-outlined" style="font-size:2rem;color:var(--primary-fixed)">bookmark</span>
-        <h2 style="font-size:1.125rem;font-weight:700"><span data-i18n="home.builds">Saved Builds</span> <span id="home-build-count" style="color:var(--on-surface-variant);font-size:0.875rem"></span></h2>
-      </div>
-      <p style="font-size:0.875rem;color:var(--on-surface-variant)" data-i18n="home.builds.desc">Access your saved and optimized loadouts.</p>
-    </a>
+    <!-- Quick Links -->
+    <section>
+      <h2 style="font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
+        <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--on-surface-variant)">apps</span>
+        바로가기
+      </h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:0.75rem" id="home-shortcuts"></div>
+    </section>
   </div>
+
+  <!-- Hidden data for JS -->
+  <div id="home-grid" style="display:none">
+    <span id="home-char-count"></span>
+    <span id="home-artifact-count"></span>
+    <span id="home-weapon-count"></span>
+    <span id="home-team-count"></span>
+    <span id="home-build-count"></span>
+    <div id="home-char-avatars"></div>
+  </div>
+
 </main>
 
 <footer class="footer">
   <div class="footer__inner">
-    <ul class="footer__links">
-      <li><a href="#">Documentation</a></li>
-      <li><a href="#">Privacy Policy</a></li>
-      <li><a href="#">Changelog</a></li>
-    </ul>
-    <p class="footer__copy" data-i18n="footer.disclaimer">v2.0.0-archive | Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
+    <p class="footer__copy" data-i18n="footer.disclaimer">Data provided for theorycrafting purposes. Not affiliated with HoYoverse.</p>
   </div>
 </footer>
 
