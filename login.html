@@ -13,7 +13,7 @@
 <main class="main" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding-top:0">
   <div class="card card--container" style="width:100%;max-width:24rem">
     <div style="text-align:center;margin-bottom:2rem">
-      <h1 style="font-size:1.5rem;font-weight:800;letter-spacing:-0.03em">LazyImpact <span style="color:var(--primary)">V2</span></h1>
+      <h1 style="font-size:1.5rem;font-weight:800;letter-spacing:-0.03em">LazyImpact</h1>
       <p style="color:var(--on-surface-variant);font-size:0.875rem;margin-top:0.5rem" id="auth-subtitle">로그인하여 계속하세요</p>
     </div>
 
@@ -102,7 +102,15 @@
       }
       window.location.href = '/index.html'
     } catch (err) {
-      errorEl.textContent = err.message
+      const errKo = {
+        'invalid credentials': '사용자 이름 또는 비밀번호가 올바르지 않습니다',
+        'username and password required': '사용자 이름과 비밀번호를 입력해주세요',
+        'password must be at least 8 characters': '비밀번호는 8자 이상이어야 합니다',
+        'username already taken': '이미 사용 중인 사용자 이름입니다',
+        'Request failed': '요청에 실패했습니다',
+        'Login after registration failed': '회원가입 후 자동 로그인에 실패했습니다',
+      }
+      errorEl.textContent = errKo[err.message] || err.message
       errorEl.style.display = 'block'
     }
   })
