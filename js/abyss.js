@@ -190,10 +190,14 @@ function renderCharCard(c) {
   const weaponName = localizeWeaponName(c.weapon || '')
   const element = localizeElement(c.element || '')
 
-  const artifactRows = (c.artifacts || []).map((a) => {
+  const slotOrder = ['flower', 'plume', 'sands', 'goblet', 'circlet']
+  const slotKo = { flower: '꽃', plume: '깃털', sands: '모래', goblet: '성배', circlet: '왕관' }
+  const sortedArtifacts = [...(c.artifacts || [])].sort((a, b) => slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot))
+  const artifactRows = sortedArtifacts.map((a) => {
     const setDisplay = (typeof setNameKo !== 'undefined' && setNameKo[a.set]) ? setNameKo[a.set] : (a.set || '')
+    const slotDisplay = slotKo[a.slot] || a.slot || ''
     return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;padding:0.125rem 0">
-      <span style="color:var(--on-surface-variant)">${a.slot || ''}</span>
+      <span style="color:var(--on-surface-variant)">${slotDisplay}</span>
       <span style="font-weight:500">${setDisplay} ${a.level != null ? `+${a.level}` : ''}</span>
      </div>`
   }).join('')
@@ -233,33 +237,8 @@ function renderCharCard(c) {
 }
 
 function renderOverall(el, overall) {
-  if (overall.score == null) {
-    el.innerHTML = emptyState('analytics', '점수를 계산할 수 없습니다.')
-    return
-  }
-
-  const pct = Math.min(Math.max((overall.score / (overall.max_score || 100)) * 100, 0), 100)
-  const grade = overall.grade || ''
-  const gradeColor = { S: 'var(--secondary)', A: 'var(--primary)', B: 'var(--tertiary)', C: 'var(--error)' }[grade] || 'var(--on-surface-variant)'
-
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap">
-      <div style="text-align:center;min-width:5rem">
-        <div style="font-size:2.5rem;font-weight:800;color:${gradeColor};line-height:1">${grade || overall.score}</div>
-        ${grade ? `<div style="font-size:1.25rem;font-weight:700;color:var(--primary);margin-top:0.25rem">${overall.score}</div>` : ''}
-        <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.25rem">종합 점수</div>
-      </div>
-      <div style="flex-grow:1;min-width:10rem">
-        <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--on-surface-variant);margin-bottom:0.375rem">
-          <span>${overall.score} / ${overall.max_score || 100}</span>
-          <span>${Math.round(pct)}%</span>
-        </div>
-        <div style="height:0.625rem;background:var(--surface-highest);border-radius:var(--r-full);overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--primary),var(--secondary));border-radius:var(--r-full);transition:width 0.5s"></div>
-        </div>
-        ${overall.summary ? `<p style="font-size:0.8125rem;color:var(--on-surface-variant);margin-top:0.625rem">${overall.summary}</p>` : ''}
-      </div>
-    </div>`
+  // Removed: 종합 점수 section (meaningless to users)
+  el.innerHTML = ''
 }
 
 function renderRecommendations(el, recs) {
@@ -274,15 +253,24 @@ function renderRecommendations(el, recs) {
   const prioColors = { 1: 'var(--error)', 2: 'var(--tertiary)', 3: 'var(--on-surface-variant)' }
   const prioLabels = { 1: '긴급', 2: '권장', 3: '참고' }
 
-  el.innerHTML = recs.map((r) =>
-    `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--surface-highest);border-radius:var(--r-md);margin-bottom:0.5rem;border-left:3px solid ${prioColors[r.priority] || 'var(--outline)'}">
+  el.innerHTML = recs.map((r) => {
+    // Localize character names in title/reason
+    let title = r.title || ''
+    let reason = r.reason || ''
+    if (typeof charNameEnToKo !== 'undefined') {
+      Object.entries(charNameEnToKo).sort((a,b) => b[0].length - a[0].length).forEach(([en, ko]) => {
+        title = title.replace(en, ko)
+        reason = reason.replace(en, ko)
+      })
+    }
+    return `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--surface-highest);border-radius:var(--r-md);margin-bottom:0.5rem;border-left:3px solid ${prioColors[r.priority] || 'var(--outline)'}">
       <div style="flex-grow:1">
-        <div style="font-size:0.875rem;font-weight:600">${r.title}</div>
-        <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.125rem">${r.reason || ''}</div>
+        <div style="font-size:0.875rem;font-weight:600">${title}</div>
+        <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.125rem">${reason}</div>
       </div>
       <span style="font-size:0.625rem;font-weight:700;padding:0.25rem 0.5rem;border-radius:var(--r-full);background:${prioColors[r.priority]};color:var(--on-primary);white-space:nowrap">${prioLabels[r.priority] || ''}</span>
     </div>`
-  ).join('')
+  }).join('')
 }
 
 function emptyState(icon, msg) {
