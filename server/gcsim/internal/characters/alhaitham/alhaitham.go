@@ -1,0 +1,103 @@
+package alhaitham
+
+import (
+	tmpl "lazyimpact/gcsim/internal/template/character"
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+)
+
+func init() {
+	core.RegisterCharFunc(keys.Alhaitham, NewChar)
+}
+
+type char struct {
+	*tmpl.Character
+	mirrorCount     int
+	lastInfusionSrc int
+	c2Counter       int
+}
+
+func NewChar(s *core.Core, w *character.CharWrapper, _ info.CharacterProfile) error {
+	c := char{}
+	c.Character = tmpl.NewWithWrapper(s, w)
+
+	c.EnergyMax = 70
+	c.NormalHitNum = normalHitNum
+	c.BurstCon = 5
+	c.SkillCon = 3
+
+	w.Character = &c
+
+	return nil
+}
+
+func (c *char) Init() error {
+	c.onExitField()
+	c.a4()
+	return nil
+}
+
+func (c *char) onExitField() {
+	c.Core.Events.Subscribe(event.OnCharacterSwap, func(args ...any) {
+		// do nothing if previous char wasn't alhaitham
+		prev := args[0].(int)
+		if prev != c.Index() {
+			return
+		}
+		c.lastInfusionSrc = -1 // Might prevent undesired behaviour
+		if c.mirrorCount > 0 {
+			c.mirrorCount = 0
+			c.Core.Log.NewEvent("Alhaitham left the field, mirror lost", glog.LogCharacterEvent, c.Index())
+		}
+	}, "alhaitham-exit")
+}
+
+func (c *char) Snapshot(ai *info.AttackInfo) info.Snapshot {
+	ds := c.Character.Snapshot(ai)
+
+	if c.mirrorCount > 0 { // weapon infusion can't be overriden for haitham
+		switch ai.AttackTag {
+		case attacks.AttackTagNormal:
+		case attacks.AttackTagPlunge:
+		case attacks.AttackTagExtra:
+		default:
+			return ds
+		}
+		ai.Element = attributes.Dendro
+	}
+	return ds
+}
+
+func (c *char) Condition(fields []string) (any, error) {
+	switch fields[0] {
+	case "mirrors":
+		return c.mirrorCount, nil
+	case "c2-stacks":
+		stacks := 0
+		for i := 1; i <= c2MaxStacks; i++ {
+			if c.StatusIsActive(c2ModName(i)) {
+				stacks++
+			}
+		}
+		return stacks, nil
+	default:
+		return c.Character.Condition(fields)
+	}
+}
+
+func (c *char) AnimationStartDelay(k info.AnimationDelayKey) int {
+	switch k {
+	case info.AnimationXingqiuN0StartDelay:
+		return 14
+	case info.AnimationYelanN0StartDelay:
+		return 7
+	default:
+		return c.Character.AnimationStartDelay(k)
+	}
+}

@@ -1,0 +1,89 @@
+package xinyan
+
+import (
+	"lazyimpact/gcsim/pkg/core/action"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const c1ICDKey = "xinyan-c1-icd"
+
+// Upon scoring a CRIT Hit, increases ATK SPD of Xinyan's Normal and Charged Attacks by 12% for 5s.
+// Can only occur once every 5s.
+func (c *char) makeC1CB() info.AttackCBFunc {
+	if c.Base.Cons < 1 {
+		return nil
+	}
+	return func(a info.AttackCB) {
+		if a.Target.Type() != info.TargettableEnemy {
+			return
+		}
+		if c.Core.Player.Active() != c.Index() {
+			return
+		}
+		if !a.IsCrit {
+			return
+		}
+		if c.StatusIsActive(c1ICDKey) {
+			return
+		}
+		c.AddStatus(c1ICDKey, 5*60, true)
+
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.AtkSpd] = 0.12
+		c.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag("xinyan-c1", 5*60),
+			AffectedStat: attributes.AtkSpd,
+			Amount: func() []float64 {
+				if c.Core.Player.CurrentState() != action.NormalAttackState && c.Core.Player.CurrentState() != action.ChargeAttackState {
+					return nil
+				}
+				return m
+			},
+		})
+	}
+}
+
+// Riff Revolution's Physical DMG has its CRIT Rate increased by 100%, and will form a shield at Shield Level 3: Rave when cast.
+func (c *char) c2() {
+	c.c2Buff = make([]float64, attributes.EndStatType)
+	c.c2Buff[attributes.CR] = 1
+
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase("xinyan-c2", -1),
+		Amount: func(atk *info.AttackEvent, _ info.Target) []float64 {
+			if atk.Info.AttackTag != attacks.AttackTagElementalBurst {
+				return nil
+			}
+			if atk.Info.Element != attributes.Physical {
+				return nil
+			}
+			return c.c2Buff
+		},
+	})
+}
+
+// Sweeping Fervor's swing DMG decreases opponent's Physical RES by 15% for 12s.
+func (c *char) makeC4CB() info.AttackCBFunc {
+	if c.Base.Cons < 4 {
+		return nil
+	}
+	return func(a info.AttackCB) {
+		e, ok := a.Target.(*enemy.Enemy)
+		if !ok {
+			return
+		}
+		e.AddResistMod(info.ResistMod{
+			Base:  modifier.NewBaseWithHitlag("xinyan-c4", 12*60),
+			Ele:   attributes.Physical,
+			Value: -0.15,
+		})
+	}
+}
+
+// Decreases the Stamina Consumption of Xinyan's Charged Attacks by 30%. Additionally, Xinyan's Charged Attacks gain an ATK Bonus equal to 50% of her DEF.
+// func (c *char) c6() {}

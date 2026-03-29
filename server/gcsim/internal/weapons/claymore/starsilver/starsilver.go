@@ -1,0 +1,76 @@
+package starsilver
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.SnowTombedStarsilver, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	m := 0.65 + float64(r)*0.15
+	mc := 1.6 + float64(r)*0.4
+	prob := 0.5 + float64(r)*0.1
+
+	const icdKey = "starsilver-icd"
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		t, ok := args[0].(*enemy.Enemy)
+		if !ok {
+			return
+		}
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		if atk.Info.AttackTag != attacks.AttackTagNormal && atk.Info.AttackTag != attacks.AttackTagExtra {
+			return
+		}
+		if c.Rand.Float64() < prob {
+			char.AddStatus(icdKey, 600, true)
+			ai := info.AttackInfo{
+				ActorIndex: char.Index(),
+				Abil:       "Starsilver Proc",
+				AttackTag:  attacks.AttackTagWeaponSkill,
+				ICDTag:     attacks.ICDTagNone,
+				ICDGroup:   attacks.ICDGroupDefault,
+				StrikeType: attacks.StrikeTypeDefault,
+				Element:    attributes.Physical,
+				Durability: 100,
+				Mult:       m,
+			}
+			if t.AuraContains(attributes.Cryo, attributes.Frozen) {
+				ai.Mult = mc
+			}
+			c.QueueAttack(ai, combat.NewCircleHitOnTarget(t, nil, 3), 0, 1)
+		}
+	}, fmt.Sprintf("starsilver-%v", char.Base.Key.String()))
+	return w, nil
+}

@@ -1,0 +1,82 @@
+package cranesechoingcall
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.CranesEchoingCall, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+const (
+	buffKey      = "crane-dmg%"
+	buffDuration = 20 * 60
+	energySrc    = "crane"
+	energyIcdKey = "crane-energy-icd"
+	energyIcd    = int(0.7 * 60)
+)
+
+// After the equipping character hits an opponent with a Plunging Attack,
+// all nearby party members' Plunging Attacks will deal 28/41/54/67/80% increased DMG for 20s.
+// When nearby party members hit opponents with Plunging Attacks,
+// they will restore 2.5/2.75/3/3.25/3.5 Energy to the equipping character.
+// Energy can be restored this way every 0.7s.
+// This energy regain effect can be triggered even if the equipping character is not on the field.
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	mDmg := make([]float64, attributes.EndStatType)
+	mDmg[attributes.DmgP] = 0.15 + float64(r)*0.13
+
+	energyRestore := 2.25 + float64(r)*0.25
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+
+		// can only trigger on plunge dmg
+		if atk.Info.AttackTag != attacks.AttackTagPlunge {
+			return
+		}
+
+		// if dmg came from equipping char, then buff team plunge dmg
+		if atk.Info.ActorIndex == char.Index() {
+			for _, char := range c.Player.Chars() {
+				char.AddAttackMod(character.AttackMod{
+					Base: modifier.NewBaseWithHitlag(buffKey, buffDuration),
+					Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+						if atk.Info.AttackTag != attacks.AttackTagPlunge {
+							return nil
+						}
+						return mDmg
+					},
+				})
+			}
+		}
+
+		// restore energy regardless of who did plunge dmg
+		if char.StatusIsActive(energyIcdKey) {
+			return
+		}
+		char.AddStatus(energyIcdKey, energyIcd, true)
+		char.AddEnergy(energySrc, energyRestore)
+	}, fmt.Sprintf("crane-onhit-%v", char.Base.Key.String()))
+
+	return w, nil
+}

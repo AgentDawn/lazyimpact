@@ -1,0 +1,116 @@
+package nymphsdream
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterSetFunc(keys.NymphsDream, NewSet)
+}
+
+type Set struct {
+	key   string
+	Index int
+	Count int
+}
+
+func (s *Set) SetIndex(idx int) { s.Index = idx }
+func (s *Set) GetCount() int    { return s.Count }
+func (s *Set) Init() error      { return nil }
+
+func NewSet(c *core.Core, char *character.CharWrapper, count int, param map[string]int) (info.Set, error) {
+	s := Set{Count: count}
+
+	if count >= 2 {
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.HydroP] = 0.15
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBase("nd-2pc", -1),
+			AffectedStat: attributes.HydroP,
+			Amount: func() []float64 {
+				return m
+			},
+		})
+	}
+
+	if count < 4 {
+		return &s, nil
+	}
+
+	s.key = fmt.Sprintf("%v-nd-4pc", char.Base.Key.String())
+
+	const normalKey = "nd-normal"
+	const chargedKey = "nd-charged"
+	const skillKey = "nd-skill"
+	const burstKey = "nd-burst"
+	const plungeKey = "nd-plunge"
+
+	m := make([]float64, attributes.EndStatType)
+	char.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("nd-4pc", -1),
+		AffectedStat: attributes.NoStat,
+		Amount: func() []float64 {
+			stacks := 0
+			for _, k := range []string{
+				normalKey, chargedKey, plungeKey,
+				skillKey, burstKey,
+			} {
+				if stacks < 3 && char.StatusIsActive(k) {
+					stacks++
+				}
+			}
+
+			if stacks > 0 {
+				m[attributes.ATKP] = 0.09*float64(stacks) - 0.02
+				m[attributes.HydroP] = 0.04
+				if stacks > 1 {
+					m[attributes.HydroP] += 0.05
+				}
+				if stacks > 2 {
+					m[attributes.HydroP] += 0.06
+				}
+			} else {
+				m[attributes.ATKP] = 0
+				m[attributes.HydroP] = 0
+			}
+
+			return m
+		},
+	})
+
+	const stackDuration = 480
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+
+		switch atk.Info.AttackTag {
+		case attacks.AttackTagNormal:
+			char.AddStatus(normalKey, stackDuration, true)
+		case attacks.AttackTagExtra:
+			char.AddStatus(chargedKey, stackDuration, true)
+		case attacks.AttackTagPlunge:
+			char.AddStatus(plungeKey, stackDuration, true)
+		case attacks.AttackTagElementalArt, attacks.AttackTagElementalArtHold:
+			char.AddStatus(skillKey, stackDuration, true)
+		case attacks.AttackTagElementalBurst:
+			char.AddStatus(burstKey, stackDuration, true)
+		}
+	}, s.key)
+
+	return &s, nil
+}

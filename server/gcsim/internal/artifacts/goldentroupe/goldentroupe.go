@@ -1,0 +1,114 @@
+package goldentroupe
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterSetFunc(keys.GoldenTroupe, NewSet)
+}
+
+type Set struct {
+	lastSwap int
+	core     *core.Core
+	char     *character.CharWrapper
+	buff     []float64
+	Index    int
+	Count    int
+}
+
+func (s *Set) SetIndex(idx int) { s.Index = idx }
+func (s *Set) GetCount() int    { return s.Count }
+func (s *Set) Init() error {
+	if s.buff == nil { // no 4pc
+		return nil
+	}
+	if s.core.Player.Active() != s.char.Index() {
+		s.gainBuff()
+	}
+	return nil
+}
+
+func NewSet(c *core.Core, char *character.CharWrapper, count int, param map[string]int) (info.Set, error) {
+	s := Set{
+		core:     c,
+		char:     char,
+		lastSwap: -1,
+		Count:    count,
+	}
+
+	// Increases Elemental Skill DMG by 20%.
+	if count >= 2 {
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.DmgP] = 0.2
+		char.AddAttackMod(character.AttackMod{
+			Base: modifier.NewBase("troupe-2pc", -1),
+			Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+				if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.AttackTag != attacks.AttackTagElementalArtHold {
+					return nil
+				}
+				return m
+			},
+		})
+	}
+
+	// Increases Elemental Skill DMG by 25%. Additionally, when not on the field, Elemental Skill DMG will be further increased by 25%.
+	// This effect will be cleared 2s after taking the field.
+	if count >= 4 {
+		s.buff = make([]float64, attributes.EndStatType)
+		s.buff[attributes.DmgP] = 0.25
+
+		c.Events.Subscribe(event.OnCharacterSwap, func(args ...any) {
+			prev := args[0].(int)
+			next := args[1].(int)
+			if prev == char.Index() {
+				s.lastSwap = -1
+				s.gainBuff()
+			} else if next == char.Index() {
+				s.lastSwap = c.F
+				c.Tasks.Add(s.clearBuff(c.F), 2*60)
+			}
+		}, fmt.Sprintf("troupe-4pc-%v", char.Base.Key.String()))
+
+		char.AddAttackMod(character.AttackMod{
+			Base: modifier.NewBase("troupe-4pc", -1),
+			Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+				if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.AttackTag != attacks.AttackTagElementalArtHold {
+					return nil
+				}
+				return s.buff
+			},
+		})
+	}
+
+	return &s, nil
+}
+
+func (s *Set) gainBuff() {
+	s.buff[attributes.DmgP] = 0.5
+	s.core.Log.NewEvent("golden troupe 4pc proc'd", glog.LogArtifactEvent, s.char.Index())
+}
+
+func (s *Set) clearBuff(src int) func() {
+	return func() {
+		if s.lastSwap != src {
+			return
+		}
+		if s.core.Player.Active() != s.char.Index() {
+			return
+		}
+
+		s.buff[attributes.DmgP] = 0.25
+		s.core.Log.NewEvent("golden troupe 4pc lost", glog.LogArtifactEvent, s.char.Index())
+	}
+}

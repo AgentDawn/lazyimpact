@@ -1,0 +1,75 @@
+package filletblade
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.FilletBlade, NewWeapon)
+}
+
+// On hit, has 50% chance to deal 240/280/320/360/400% ATK DMG to a single enemy.
+// Can only occur once every 15/14/13/12/11s.
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+const icdKey = "fillet-blade-icd"
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	cd := 960 - 60*r
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		dmg := args[2].(float64)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		if c.Rand.Float64() > 0.5 {
+			return
+		}
+		if dmg == 0 {
+			return
+		}
+		// add a new action that deals % dmg immediately
+		// superconduct attack
+		ai := info.AttackInfo{
+			ActorIndex: char.Index(),
+			Abil:       "Fillet Blade Proc",
+			AttackTag:  attacks.AttackTagWeaponSkill,
+			ICDTag:     attacks.ICDTagNone,
+			ICDGroup:   attacks.ICDGroupDefault,
+			StrikeType: attacks.StrikeTypeDefault,
+			Element:    attributes.Physical,
+			Durability: 100,
+			Mult:       2.0 + 0.4*float64(r),
+		}
+		trg := args[0].(info.Target)
+		c.QueueAttack(ai, combat.NewSingleTargetHit(trg.Key()), 0, 1)
+
+		// trigger cd
+		char.AddStatus(icdKey, cd, true)
+	}, fmt.Sprintf("fillet-blade-%v", char.Base.Key.String()))
+	return w, nil
+}

@@ -1,0 +1,94 @@
+package starcallerswatch
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/core/player/shield"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	buffKey = "starcallerswatch-buff"
+	ICDKey  = "starcallerswatch-icd"
+	buffDur = 15 * 60
+	ICDDur  = 14 * 60
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.StarcallersWatch, NewWeapon)
+}
+
+type Weapon struct {
+	Index   int
+	tickSrc int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := float64(p.Refine)
+
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.EM] = 75.0 + 25.0*r
+
+	char.AddStatMod(character.StatMod{
+		Base: modifier.NewBase("starcallerswatch-em", -1),
+		Amount: func() []float64 {
+			return m
+		},
+	})
+
+	bonus := make([]float64, attributes.EndStatType)
+	bonus[attributes.DmgP] = 0.21 + 0.07*r
+
+	c.Events.Subscribe(event.OnShielded, func(args ...any) {
+		shd := args[0].(shield.Shield)
+		if shd.ShieldOwner() != char.Index() {
+			return
+		}
+		// TODO: Not sure if the character needs to be on the field
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(ICDKey) {
+			return
+		}
+
+		char.AddStatus(ICDKey, ICDDur, true)
+		char.AddStatus("starcallerswatch", buffDur, true)
+
+		src := c.F
+		w.tickSrc = src
+		char.QueueCharTask(func() {
+			if src != w.tickSrc {
+				return
+			}
+			for _, other := range c.Player.Chars() {
+				other.DeleteAttackMod(buffKey)
+			}
+		}, buffDur)
+
+		for _, x := range c.Player.Chars() {
+			this := x
+			this.AddAttackMod(character.AttackMod{
+				Base: modifier.NewBase(buffKey, -1),
+				Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+					if c.Player.Active() != this.Index() {
+						return nil
+					}
+					return bonus
+				},
+			})
+		}
+	}, fmt.Sprintf("starcallerswatch-onshielded-%v", char.Base.Key.String()))
+
+	return w, nil
+}

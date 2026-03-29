@@ -1,0 +1,159 @@
+package emilie
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	c1ModKey      = "emilie-c1"
+	c1ScentICDKey = "emilie-c1-attack-icd"
+	c2ModKey      = "emilie-c2"
+	c6ModKey      = "emilie-c6"
+	c6ICDKey      = "emilie-c6-icd"
+
+	c1ScentICD = 2.9 * 60
+	c2Duration = 10 * 60
+	c6Duration = 5 * 60
+	c6ICD      = 12 * 60
+)
+
+func (c *char) c1() {
+	if c.Base.Cons < 1 {
+		return
+	}
+
+	c.c1A1()
+
+	c.Core.Events.Subscribe(event.OnBurning, func(args ...any) {
+		_, ok := args[0].(*enemy.Enemy)
+		if !ok {
+			return
+		}
+		c.c1Scent()
+	}, "emilie-a1-on-burning")
+
+	c.Core.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		t, ok := args[0].(*enemy.Enemy)
+		atk := args[1].(*info.AttackEvent)
+		if !ok {
+			return
+		}
+		if !t.IsBurning() {
+			return
+		}
+		if atk.Info.Element != attributes.Dendro {
+			return
+		}
+		c.c1Scent()
+	}, "emilie-a1-on-damage")
+}
+
+func (c *char) c1A1() {
+	if c.Base.Cons < 1 || c.Base.Ascension < 1 {
+		return
+	}
+
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = 0.2
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase(c1ModKey, -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.Abil != a1Abil {
+				return nil
+			}
+			return m
+		},
+	})
+}
+
+func (c *char) c1Scent() {
+	if c.StatusIsActive(c1ScentICDKey) {
+		return
+	}
+	c.AddStatus(c1ScentICDKey, c1ScentICD, true)
+
+	c.Core.Log.NewEvent("emilie c1 proc'd", glog.LogCharacterEvent, c.Index())
+	c.generateScent()
+}
+
+func (c *char) c2(a info.AttackCB) {
+	if c.Base.Cons < 2 {
+		return
+	}
+	if a.Damage == 0 {
+		return
+	}
+
+	e, ok := a.Target.(*enemy.Enemy)
+	if !ok {
+		return
+	}
+	e.AddResistMod(info.ResistMod{
+		Base:  modifier.NewBaseWithHitlag(c2ModKey, c2Duration),
+		Ele:   attributes.Dendro,
+		Value: -0.3,
+	})
+}
+
+func (c *char) c6() {
+	if c.Base.Cons < 6 {
+		return
+	}
+	if c.StatusIsActive(c6ICDKey) {
+		return
+	}
+	c.c6Scents = 0
+	c.AddStatus(c6ModKey, c6Duration, true)
+	c.AddStatus(c6ICDKey, c6ICD, true)
+}
+
+func (c *char) applyC6Bonus(ai *info.AttackInfo) {
+	if c.Base.Cons < 6 {
+		return
+	}
+	if !c.StatusIsActive(c6ModKey) {
+		return
+	}
+
+	switch ai.AttackTag {
+	case attacks.AttackTagNormal, attacks.AttackTagExtra:
+	default:
+		return
+	}
+	ai.FlatDmg += c.TotalAtk() * 3
+	ai.Element = attributes.Dendro
+	ai.IgnoreInfusion = true
+}
+
+func (c *char) c6ScentCB() func(info.AttackCB) {
+	if c.Base.Cons < 6 {
+		return nil
+	}
+	if !c.StatusIsActive(c6ModKey) {
+		return nil
+	}
+
+	done := false
+	return func(a info.AttackCB) {
+		if done {
+			return
+		}
+		if a.Target.Type() != info.TargettableEnemy {
+			return
+		}
+		done = true
+
+		c.generateScent()
+		c.c6Scents++
+		if c.c6Scents == 4 {
+			c.DeleteStatus(c6ModKey)
+		}
+	}
+}

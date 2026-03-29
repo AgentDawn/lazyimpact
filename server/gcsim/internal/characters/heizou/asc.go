@@ -1,0 +1,71 @@
+package heizou
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+// When Shikanoin Heizou activates a Swirl reaction while on the field,
+// he will gain 1 Declension stack for Heartstopper Strike.
+// This effect can be triggered once every 0.1s.
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+	const a1IcdKey = "heizou-a1-icd"
+	swirlCB := func() func(args ...any) {
+		return func(args ...any) {
+			if c.StatusIsActive(a1IcdKey) {
+				return
+			}
+			atk := args[1].(*info.AttackEvent)
+			if atk.Info.ActorIndex != c.Index() {
+				return
+			}
+			if c.Core.Player.Active() != c.Index() {
+				return
+			}
+			switch atk.Info.AttackTag {
+			case attacks.AttackTagSwirlPyro:
+			case attacks.AttackTagSwirlHydro:
+			case attacks.AttackTagSwirlElectro:
+			case attacks.AttackTagSwirlCryo:
+			default:
+				return
+			}
+			// icd is triggered regardless if stacks are maxed or not
+			c.AddStatus(a1IcdKey, 6, true)
+			c.addDecStack()
+		}
+	}
+
+	c.Core.Events.Subscribe(event.OnEnemyDamage, swirlCB(), "heizou-a1")
+}
+
+// After Shikanoin Heizou's Heartstopper Strike hits an opponent,
+// increases all party members' (excluding Shikanoin Heizou) Elemental Mastery by 80 for 10s.
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+
+	dur := 60 * 10
+	for i, char := range c.Core.Player.Chars() {
+		if i == c.Index() {
+			continue // nothing for heizou
+		}
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag("heizou-a4", dur),
+			AffectedStat: attributes.EM,
+			Amount: func() []float64 {
+				return c.a4Buff
+			},
+		})
+	}
+	c.Core.Log.NewEvent("heizou a4 triggered", glog.LogCharacterEvent, c.Index()).Write("em snapshot", c.a4Buff[attributes.EM]).Write("expiry", c.Core.F+dur)
+}

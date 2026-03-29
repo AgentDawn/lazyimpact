@@ -1,0 +1,66 @@
+package prototype
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.PrototypeArchaic, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	atk := 1.8 + float64(r)*0.6
+	const icdKey = "prototype-archaic-icd"
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		ae := args[1].(*info.AttackEvent)
+		if ae.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		if ae.Info.AttackTag != attacks.AttackTagNormal && ae.Info.AttackTag != attacks.AttackTagExtra {
+			return
+		}
+		if c.Rand.Float64() < 0.5 {
+			char.AddStatus(icdKey, 15*60, true)
+			ai := info.AttackInfo{
+				ActorIndex: char.Index(),
+				Abil:       "Prototype Archaic Proc",
+				AttackTag:  attacks.AttackTagWeaponSkill,
+				ICDTag:     attacks.ICDTagNone,
+				ICDGroup:   attacks.ICDGroupDefault,
+				StrikeType: attacks.StrikeTypeDefault,
+				Element:    attributes.Physical,
+				Durability: 100,
+				Mult:       atk,
+			}
+			trg := args[0].(info.Target)
+			c.QueueAttack(ai, combat.NewCircleHitOnTarget(trg, nil, 3), 0, 1)
+		}
+	}, fmt.Sprintf("prototype-archaic-%v", char.Base.Key.String()))
+	return w, nil
+}

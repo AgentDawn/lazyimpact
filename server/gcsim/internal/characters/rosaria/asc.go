@@ -1,0 +1,73 @@
+package rosaria
+
+import (
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+// When Rosaria strikes an opponent from behind using Ravaging Confession, Rosaria's CRIT Rate increases by 12% for 5s.
+// TODO: does this need to change if we add player position?
+func (c *char) makeA1CB() info.AttackCBFunc {
+	if c.Base.Ascension < 1 {
+		return nil
+	}
+	done := false
+	return func(a info.AttackCB) {
+		if a.Target.Type() != info.TargettableEnemy {
+			return
+		}
+		if done {
+			return
+		}
+		done = true
+
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.CR] = 0.12
+		c.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag("rosaria-a1", 300),
+			AffectedStat: attributes.CR,
+			Amount: func() []float64 {
+				return m
+			},
+		})
+		c.Core.Log.NewEvent("Rosaria A1 activation", glog.LogCharacterEvent, c.Index()).
+			Write("ends_on", c.Core.F+300)
+	}
+}
+
+// Casting Rites of Termination increases CRIT Rate of all nearby party members (except Rosaria herself)
+// by 15% of Rosaria's CRIT Rate for 10s.
+// CRIT Rate Bonus gained this way cannot exceed 15%.
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+
+	critShare := 0.15 * c.NonExtraStat(attributes.CR)
+	if critShare > 0.15 {
+		critShare = 0.15
+	}
+
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.CR] = critShare
+	for i, char := range c.Core.Player.Chars() {
+		// skip Rosaria
+		if i == c.Index() {
+			continue
+		}
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag("rosaria-a4", 600),
+			AffectedStat: attributes.CR,
+			Extra:        true,
+			Amount: func() []float64 {
+				return m
+			},
+		})
+	}
+	c.Core.Log.NewEvent("Rosaria A4 activation", glog.LogCharacterEvent, c.Index()).
+		Write("ends_on", c.Core.F+600).
+		Write("crit_share", critShare)
+}

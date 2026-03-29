@@ -1,0 +1,66 @@
+package earthshaker
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.EarthShaker, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+// After a party member triggers a Pyro-related reaction,
+// the equipping character's Elemental Skill DMG is increased by 32% for 8s.
+// This effect can be triggered even when the triggering party member is not on the field.
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	amt := 0.12 + float64(r)*0.04
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = amt
+
+	buffSkill := func(...any) {
+		char.AddAttackMod(character.AttackMod{
+			Base: modifier.NewBaseWithHitlag("earth-shaker", 8*60),
+			Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+				if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.AttackTag != attacks.AttackTagElementalArtHold {
+					return nil
+				}
+				return m
+			},
+		})
+	}
+	buffSkillNoGadget := func(args ...any) {
+		if _, ok := args[0].(*enemy.Enemy); ok {
+			buffSkill(args...)
+		}
+	}
+
+	charKey := char.Base.Key.String()
+	c.Events.Subscribe(event.OnOverload, buffSkillNoGadget, fmt.Sprintf("earth-shaker-overload-%s", charKey))
+	c.Events.Subscribe(event.OnVaporize, buffSkillNoGadget, fmt.Sprintf("earth-shaker-vaporize-%s", charKey))
+	c.Events.Subscribe(event.OnMelt, buffSkillNoGadget, fmt.Sprintf("earth-shaker-melt-%s", charKey))
+	c.Events.Subscribe(event.OnSwirlPyro, buffSkillNoGadget, fmt.Sprintf("earth-shaker-pyro-swirl-%s", charKey))
+	c.Events.Subscribe(event.OnCrystallizePyro, buffSkillNoGadget, fmt.Sprintf("earth-shaker-pyro-crystallize-%s", charKey))
+	c.Events.Subscribe(event.OnBurning, buffSkillNoGadget, fmt.Sprintf("earth-shaker-burning-%s", charKey))
+	c.Events.Subscribe(event.OnBurgeon, buffSkill, fmt.Sprintf("earth-shaker-burgeon-%s", charKey))
+
+	return w, nil
+}

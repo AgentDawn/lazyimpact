@@ -1,0 +1,67 @@
+package emilie
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	a1Abil   = "Cleardew Cologne (A1)"
+	a4ModKey = "emilie-a4"
+
+	a1Hitmark = 18
+)
+
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+	c.SetTag(lumidouceScent, c.Tag(lumidouceScent)-2)
+
+	ai := info.AttackInfo{
+		ActorIndex: c.Index(),
+		Abil:       a1Abil,
+		AttackTag:  attacks.AttackTagNone,
+		ICDTag:     attacks.ICDTagNone,
+		ICDGroup:   attacks.ICDGroupDefault,
+		StrikeType: attacks.StrikeTypeDefault,
+		Element:    attributes.Dendro,
+		Durability: 25,
+		Mult:       6,
+	}
+	c.applyC6Bonus(&ai)
+	c.Core.QueueAttack(
+		ai,
+		combat.NewCircleHit(c.lumidoucePos, c.Core.Combat.PrimaryTarget(), nil, 3),
+		a1Hitmark,
+		a1Hitmark,
+		c.c2,
+	)
+}
+
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+
+	m := make([]float64, attributes.EndStatType)
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase(a4ModKey, -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			x, ok := t.(*enemy.Enemy)
+			if !ok {
+				return nil
+			}
+			if !x.IsBurning() {
+				return nil
+			}
+			m[attributes.DmgP] = min(c.TotalAtk()/1000*0.15, 0.36)
+			return m
+		},
+	})
+}

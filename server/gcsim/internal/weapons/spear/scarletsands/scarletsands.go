@@ -1,0 +1,104 @@
+package scarletsands
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.StaffOfTheScarletSands, NewWeapon)
+}
+
+type Weapon struct {
+	stacks int
+	Index  int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+const skillBuff = "scarletsands-skill"
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	mATK := make([]float64, attributes.EndStatType)
+	atkBuff := 0.39 + 0.13*float64(r)
+	atkSkillBuff := 0.21 + 0.07*float64(r)
+	char.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("scarletsands", -1),
+		AffectedStat: attributes.ATK,
+		Extra:        true,
+		Amount: func() []float64 {
+			em := char.NonExtraStat(attributes.EM)
+			mATK[attributes.ATK] = atkBuff * em
+			return mATK
+		},
+	})
+
+	icdCounter := 0
+	icdCounterAdd := func() {
+		icdCounter++
+
+		char.QueueCharTask(func() {
+			icdCounter--
+			c.Log.NewEvent("scarletsands icd counter decreased", glog.LogWeaponEvent, char.Index()).
+				Write("counter", icdCounter)
+		}, 0.3*60)
+
+		c.Log.NewEvent("scarletsands icd counter increased", glog.LogWeaponEvent, char.Index()).
+			Write("counter", icdCounter)
+	}
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.AttackTag != attacks.AttackTagElementalArtHold {
+			return
+		}
+		if icdCounter >= 3 {
+			c.Log.NewEvent("scarletsands did not gain stacks due to icd", glog.LogWeaponEvent, char.Index())
+			return
+		}
+		icdCounterAdd()
+
+		// reset stacks if expired
+		if !char.StatModIsActive(skillBuff) {
+			w.stacks = 0
+		}
+		if w.stacks < 3 {
+			w.stacks++
+		}
+
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag(skillBuff, 10*60),
+			AffectedStat: attributes.ATK,
+			Extra:        true,
+			Amount: func() []float64 {
+				em := char.NonExtraStat(attributes.EM)
+				mATK[attributes.ATK] = atkSkillBuff * em * float64(w.stacks)
+				return mATK
+			},
+		})
+
+		c.Log.NewEvent("scarletsands adding stack", glog.LogWeaponEvent, char.Index()).Write("stacks", w.stacks)
+	}, fmt.Sprintf("scarletsands-%v", char.Base.Key.String()))
+
+	return w, nil
+}

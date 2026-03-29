@@ -1,0 +1,38 @@
+package yaemiko
+
+import (
+	"lazyimpact/gcsim/pkg/core/action"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+// When casting Great Secret Art: Tenko Kenshin, each Sesshou Sakura destroyed
+// resets the cooldown for 1 charge of Yakan Evocation: Sesshou Sakura.
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+	c.ResetActionCooldown(action.ActionSkill)
+}
+
+// Every point of Elemental Mastery Yae Miko possesses will increase Sesshou Sakura DMG by 0.15%.
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+	m := make([]float64, attributes.EndStatType)
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase("yaemiko-a4", -1),
+		Amount: func(atk *info.AttackEvent, _ info.Target) []float64 {
+			// only trigger on elemental art damage
+			if atk.Info.AttackTag != attacks.AttackTagElementalArt {
+				return nil
+			}
+			m[attributes.DmgP] = c.Stat(attributes.EM) * 0.0015
+			return m
+		},
+	})
+}

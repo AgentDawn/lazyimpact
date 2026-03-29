@@ -1,0 +1,84 @@
+package baizhu
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+// Baizhu gains different effects according to the current HP of your current active character:
+// ·When their HP is less than 50%, Baizhu gains 20% Healing Bonus.
+// ·When their HP is equal to or more than 50%, Baizhu gains 25% Dendro DMG Bonus.
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+
+	// Healing part
+	mHeal := make([]float64, attributes.EndStatType)
+	mHeal[attributes.Heal] = 0.2
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("baizhu-a1-heal-bonus", -1),
+		AffectedStat: attributes.Heal,
+		Amount: func() []float64 {
+			active := c.Core.Player.ActiveChar()
+			if active.CurrentHPRatio() < 0.5 {
+				return mHeal
+			}
+			return nil
+		},
+	})
+
+	// Dendro DMG part
+	mDendroP := make([]float64, attributes.EndStatType)
+	mDendroP[attributes.DendroP] = 0.25
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("baizhu-a1-dendro-dmg", -1),
+		AffectedStat: attributes.DendroP,
+		Amount: func() []float64 {
+			active := c.Core.Player.ActiveChar()
+			if active.CurrentHPRatio() >= 0.5 {
+				return mDendroP
+			}
+			return nil
+		},
+	})
+}
+
+// Characters who are healed by Seamless Shields will gain the Year of Verdant Favor effect:
+// Each 1,000 Max HP that Baizhu possesses that does not exceed 50,000 will increase the Burning, Bloom, Hyperbloom, and Burgeon reaction
+// DMG dealt by these characters by 2%, while the Aggravate and Spread reaction DMG dealt by these characters will be increased by 0.8%.
+//
+//	This effect lasts 6s.
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+	c.Core.Player.ActiveChar().AddReactBonusMod(character.ReactBonusMod{
+		Base: modifier.NewBaseWithHitlag("baizhu-a4", 6*60),
+		Amount: func(ai info.AttackInfo) float64 {
+			limitHP := c.MaxHP() / 1000.0
+			if limitHP > 50 {
+				limitHP = 50
+			}
+			if ai.Catalyzed && (ai.CatalyzedType == info.ReactionTypeAggravate || ai.CatalyzedType == info.ReactionTypeSpread) {
+				return limitHP * 0.008
+			}
+			mult := 0.02
+			switch ai.AttackTag {
+			case attacks.AttackTagBloom:
+			case attacks.AttackTagHyperbloom:
+			case attacks.AttackTagBurgeon:
+			case attacks.AttackTagBurningDamage:
+			case attacks.AttackTagDirectLunarBloom:
+				mult = 0.007
+			default:
+				return 0
+			}
+
+			return limitHP * mult
+		},
+	})
+}

@@ -1,0 +1,80 @@
+package anemo
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/enemy"
+)
+
+// The last hit of a Normal Attack combo unleashes a wind blade, dealing 60% of ATK as Anemo DMG to all opponents in its path.
+func (c *Traveler) a1() {
+	if c.Base.Ascension < 1 || c.NormalCounter != c.NormalHitNum-1 {
+		return
+	}
+	ai := info.AttackInfo{
+		ActorIndex: c.Index(),
+		Abil:       "Slitting Wind (A1)",
+		AttackTag:  attacks.AttackTagNormal,
+		ICDTag:     attacks.ICDTagNone,
+		ICDGroup:   attacks.ICDGroupPoleExtraAttack,
+		StrikeType: attacks.StrikeTypeSlash,
+		Element:    attributes.Anemo,
+		Durability: 25,
+		Mult:       0.6,
+	}
+	c.QueueCharTask(func() {
+		c.Core.QueueAttack(
+			ai,
+			combat.NewCircleHit(
+				c.Core.Combat.Player(),
+				c.Core.Combat.PrimaryTarget(),
+				nil,
+				1,
+			),
+			0,
+			0,
+		)
+	}, a1Hitmark[c.gender])
+}
+
+const a4ICDKey = "traveleranemo-a4-icd"
+
+// Palm Vortex kills regenerate 2% HP for 5s.
+// This effect can only occur once every 5s.
+func (c *Traveler) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+	c.Core.Events.Subscribe(event.OnTargetDied, func(args ...any) {
+		if _, ok := args[0].(*enemy.Enemy); !ok {
+			return
+		}
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != c.Index() {
+			return
+		}
+		if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.AttackTag != attacks.AttackTagElementalArtHold {
+			return
+		}
+		if c.StatusIsActive(a4ICDKey) {
+			return
+		}
+
+		c.AddStatus(a4ICDKey, 300, true)
+
+		for i := range 5 {
+			c.QueueCharTask(func() {
+				c.Core.Player.Heal(info.HealInfo{
+					Caller:  c.Index(),
+					Target:  c.Index(),
+					Message: "Second Wind",
+					Type:    info.HealTypePercent,
+					Src:     0.02,
+				})
+			}, (i+1)*60) // healing starts 1s after death
+		}
+	}, "traveleranemo-a4")
+}

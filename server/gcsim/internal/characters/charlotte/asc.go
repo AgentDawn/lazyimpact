@@ -1,0 +1,66 @@
+package charlotte
+
+import (
+	"lazyimpact/gcsim/pkg/core/action"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+
+	count := 0
+	c.Core.Events.Subscribe(event.OnTargetDied, func(args ...any) {
+		t, ok := args[0].(*enemy.Enemy)
+		if !ok {
+			return
+		}
+		if !t.StatusIsActive(skillHoldMarkKey) {
+			return
+		}
+		if count == 4 {
+			return
+		}
+		if count == 0 {
+			c.QueueCharTask(func() {
+				count = 0
+			}, 720)
+		}
+		count++
+		c.ReduceActionCooldown(action.ActionSkill, 120)
+	}, "charlotte-a1")
+}
+
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+	heal := 0
+	cryop := 0
+	for _, this := range c.Core.Player.Chars() {
+		if c.Index() == this.Index() {
+			continue
+		}
+		if this.CharZone == info.ZoneFontaine {
+			heal++
+		} else {
+			cryop++
+		}
+	}
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.Heal] = 0.05 * float64(heal)
+	m[attributes.CryoP] = 0.05 * float64(cryop)
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("charlotte-a4", -1),
+		AffectedStat: attributes.NoStat,
+		Amount: func() []float64 {
+			return m
+		},
+	})
+}

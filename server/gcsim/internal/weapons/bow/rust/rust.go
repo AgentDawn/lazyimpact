@@ -1,0 +1,47 @@
+package rust
+
+import (
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.Rust, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	// Increases Normal Attack DMG by 40% but decreases Charged Attack DMG by 10%.
+	w := &Weapon{}
+	r := p.Refine
+
+	m := make([]float64, attributes.EndStatType)
+	inc := .3 + float64(r)*0.1
+	char.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase("rust", -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			if atk.Info.AttackTag == attacks.AttackTagNormal {
+				m[attributes.DmgP] = inc
+				return m
+			}
+			if atk.Info.AttackTag == attacks.AttackTagExtra {
+				m[attributes.DmgP] = -0.1
+				return m
+			}
+			return nil
+		},
+	})
+
+	return w, nil
+}

@@ -1,0 +1,97 @@
+package ayato
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	c6Abil = "Boundless Origin (C6)"
+)
+
+func (c *char) c1() {
+	if c.Core.Combat.DamageMode {
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.DmgP] = 0.4
+		c.AddAttackMod(character.AttackMod{
+			Base: modifier.NewBase("ayato-c1", -1),
+			Amount: func(a *info.AttackEvent, t info.Target) []float64 {
+				x, ok := t.(*enemy.Enemy)
+				if !ok {
+					return nil
+				}
+				if a.Info.AttackTag != attacks.AttackTagNormal || x.HP()/x.MaxHP() > 0.5 {
+					return nil
+				}
+				return m
+			},
+		})
+	}
+}
+
+func (c *char) c2() {
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.HPP] = 0.5
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("ayato-c2", -1),
+		AffectedStat: attributes.HPP,
+		Amount: func() []float64 {
+			if c.stacks >= 3 {
+				return m
+			}
+			return nil
+		},
+	})
+}
+
+// After using Kamisato Art: Kyouka, Ayato's next Shunsuiken attack will create
+// 2 extra Shunsuiken strikes when they hit opponents, each one dealing 450% of Ayato's ATK as DMG.
+// Both these Shunsuiken attacks will not be affected by Namisen.
+func (c *char) makeC6CB() info.AttackCBFunc {
+	if c.Base.Cons < 6 || !c.c6Ready {
+		return nil
+	}
+	return func(a info.AttackCB) {
+		if a.Target.Type() != info.TargettableEnemy {
+			return
+		}
+		if c.Core.Player.Active() != c.Index() {
+			return
+		}
+		if !c.c6Ready {
+			return
+		}
+		c.c6Ready = false
+
+		c.Core.Log.NewEvent("ayato c6 proc'd", glog.LogCharacterEvent, c.Index())
+		ai := info.AttackInfo{
+			Abil:               c6Abil,
+			ActorIndex:         c.Index(),
+			AttackTag:          attacks.AttackTagNormal,
+			ICDTag:             attacks.ICDTagNone,
+			ICDGroup:           attacks.ICDGroupDefault,
+			StrikeType:         attacks.StrikeTypeSlash,
+			Element:            attributes.Hydro,
+			Durability:         25,
+			Mult:               4.5,
+			HitlagFactor:       0.01,
+			HitlagHaltFrames:   0.03 * 60,
+			CanBeDefenseHalted: false,
+			IsDeployable:       true,
+		}
+		for i := range 2 {
+			c.Core.QueueAttack(
+				ai,
+				combat.NewBoxHitOnTarget(c.Core.Combat.Player(), nil, 8, 7),
+				20+i*2,
+				20+i*2,
+			)
+		}
+	}
+}

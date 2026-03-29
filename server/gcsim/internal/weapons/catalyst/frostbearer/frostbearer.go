@@ -1,0 +1,81 @@
+package frostbearer
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.Frostbearer, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	atk := 0.65 + float64(r)*0.15
+	atkc := 1.6 + float64(r)*0.4
+	prob := 0.5 + float64(r)*0.1
+
+	const icdKey = "frostbearer-icd"
+	icd := 600
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		ae := args[1].(*info.AttackEvent)
+		t, ok := args[0].(*enemy.Enemy)
+		if !ok {
+			return
+		}
+		if ae.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		if ae.Info.AttackTag != attacks.AttackTagNormal && ae.Info.AttackTag != attacks.AttackTagExtra {
+			return
+		}
+		if c.Rand.Float64() < prob {
+			char.AddStatus(icdKey, icd, true)
+
+			ai := info.AttackInfo{
+				ActorIndex: char.Index(),
+				Abil:       "Frostbearer Proc",
+				AttackTag:  attacks.AttackTagWeaponSkill,
+				ICDTag:     attacks.ICDTagNone,
+				ICDGroup:   attacks.ICDGroupDefault,
+				StrikeType: attacks.StrikeTypeDefault,
+				Element:    attributes.Physical,
+				Durability: 100,
+				Mult:       atk,
+			}
+
+			if t.AuraContains(attributes.Cryo) || t.AuraContains(attributes.Frozen) {
+				ai.Mult = atkc
+			}
+
+			c.QueueAttack(ai, combat.NewCircleHitOnTarget(t, nil, 3), 0, 1)
+		}
+	}, fmt.Sprintf("frostbearer-%v", char.Base.Key.String()))
+
+	return w, nil
+}

@@ -1,0 +1,121 @@
+package neuvillette
+
+import (
+	"math"
+
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+type NeuvA1Keys struct {
+	Evt event.Event
+	Key string
+}
+
+var a1Multipliers = [4]float64{1, 1.1, 1.25, 1.6}
+
+func (c *char) a1() {
+	a1 := []NeuvA1Keys{
+		{event.OnBloom, "neuvillette-a1-bloom"},
+		{event.OnLunarBloom, "neuvillette-a1-lunarbloom"},
+		{event.OnCrystallizeHydro, "neuvillette-a1-crystallize-hydro"},
+		{event.OnElectroCharged, "neuvillette-a1-electro-charged"},
+		{event.OnLunarCharged, "neuvillette-a1-lunar-charged"},
+		{event.OnFrozen, "neuvillette-a1-frozen"},
+		{event.OnSwirlHydro, "neuvillette-a1-swirl-hydro"},
+		{event.OnVaporize, "neuvillette-a1-vaporize"},
+	}
+
+	c.a1Statuses = append(c.a1Statuses,
+		a1...,
+	)
+
+	for _, val := range a1 {
+		c.Core.Events.Subscribe(val.Evt, func(args ...any) {
+			if _, ok := args[0].(*enemy.Enemy); !ok {
+				return
+			}
+			c.AddStatus(val.Key, 30*60, true)
+		}, val.Key)
+	}
+}
+
+func (c *char) countA1() int {
+	if c.Base.Ascension < 1 {
+		return 0
+	}
+	a1TriggeredReactionsCount := c.a1BaseStackCount
+	for _, val := range c.a1Statuses {
+		if c.StatusIsActive(val.Key) {
+			a1TriggeredReactionsCount += 1
+		}
+		if a1TriggeredReactionsCount == 3 {
+			break
+		}
+	}
+	return a1TriggeredReactionsCount
+}
+
+func (c *char) a4() {
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("neuvillette-a4", -1),
+		AffectedStat: attributes.HydroP,
+		Extra:        true,
+		Amount: func() []float64 {
+			return c.a4Buff
+		},
+	})
+
+	c.Core.Events.Subscribe(event.OnPlayerHPDrain, func(args ...any) {
+		di := args[0].(*info.DrainInfo)
+
+		if di.Amount <= 0 {
+			return
+		}
+
+		if di.ActorIndex != c.Index() {
+			return
+		}
+
+		c.updateA4()
+	}, "neuv-a4-update-on-hp-drain")
+
+	c.Core.Events.Subscribe(event.OnHeal, func(args ...any) {
+		target := args[1].(int)
+		amount := args[2].(float64)
+		overheal := args[3].(float64)
+
+		if amount <= 0 {
+			return
+		}
+
+		if math.Abs(amount-overheal) <= 1e-9 {
+			return
+		}
+
+		if target != c.Index() {
+			return
+		}
+
+		c.updateA4()
+	}, "neuv-a4-update-on-heal")
+
+	c.updateA4()
+}
+
+func (c *char) updateA4() {
+	hpRatio := c.CurrentHPRatio()
+	hydroDmgBuff := (hpRatio - 0.3) * 0.6
+
+	if hydroDmgBuff < 0 {
+		hydroDmgBuff = 0
+	} else if hydroDmgBuff > 0.3 {
+		hydroDmgBuff = 0.3
+	}
+
+	c.a4Buff[attributes.HydroP] = hydroDmgBuff
+}

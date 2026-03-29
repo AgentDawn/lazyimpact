@@ -1,0 +1,96 @@
+package sigewinne
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	baseConvalescenceHP       = 30000
+	flatConvalescenceIncrease = 80.0 / 1000
+	flatConvalescenceCap      = 2800
+	a1DmgBuff                 = 0.08
+	a4HpDebtHealingBonusRatio = 0.03 / 1000
+	a4HealingBonusCap         = 0.3
+	convalescenceKey          = "sigewinne-convalescence"
+)
+
+func (c *char) a1() {
+	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		switch atk.Info.AttackTag {
+		case attacks.AttackTagElementalArt:
+		case attacks.AttackTagElementalArtHold:
+		default:
+			return
+		}
+
+		if atk.Info.ActorIndex == c.Index() {
+			return
+		}
+
+		active := c.Core.Player.ActiveChar()
+		if active.Index() == atk.Info.ActorIndex {
+			return
+		}
+
+		if !c.StatusIsActive(convalescenceKey) || c.Tag(convalescenceKey) == 0 {
+			return
+		}
+		c.SetTag(convalescenceKey, c.Tag(convalescenceKey)-1)
+
+		hp := max(c.MaxHP()-baseConvalescenceHP, 0)
+		var amt float64
+		if c.Base.Cons >= 1 {
+			amt = min(c1FlatConvalescenceCap, hp*c1FlatConvalescenceIncrease)
+		} else {
+			amt = min(flatConvalescenceCap, hp*flatConvalescenceIncrease)
+		}
+
+		if c.Core.Flags.LogDebug {
+			c.Core.Log.NewEvent("Sigewinne A1 proc dmg add", glog.LogPreDamageMod, atk.Info.ActorIndex).
+				Write("before", atk.Info.FlatDmg).
+				Write("addition", amt).
+				Write("effect_ends_at", c.StatusExpiry(convalescenceKey)).
+				Write("quill_left", c.Tag(convalescenceKey))
+		}
+
+		atk.Info.FlatDmg += amt
+	}, "sigewinne-convalescence-hook")
+}
+
+func (c *char) a1Self() {
+	c.AddStatus(convalescenceKey, skillCD*60, true)
+	c.SetTag(convalescenceKey, 10)
+
+	buff := make([]float64, attributes.EndStatType)
+	buff[attributes.HydroP] = a1DmgBuff
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBaseWithHitlag("sigewinne-a1", skillCD*60),
+		Amount: func(a *info.AttackEvent, _ info.Target) []float64 {
+			return buff
+		},
+	})
+}
+
+func (c *char) a4() {
+	m := make([]float64, attributes.EndStatType)
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("sigewinne-a4", -1),
+		AffectedStat: attributes.Heal,
+		Amount: func() []float64 {
+			totalHpDebt := 0.
+			for _, other := range c.Core.Player.Chars() {
+				totalHpDebt += other.CurrentHPDebt()
+			}
+			heal := min(a4HealingBonusCap, totalHpDebt*a4HpDebtHealingBonusRatio)
+			m[attributes.Heal] = heal
+			return m
+		},
+	})
+}

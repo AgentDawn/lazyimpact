@@ -1,0 +1,105 @@
+package scionoftheblazingsun
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	icdKey    = "scion-icd"
+	debuffKey = "scion-heartsearer"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.ScionOfTheBlazingSun, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+// After a Charged Attack hits an opponent, a Sunfire Arrow will descend upon the opponent hit, dealing 60% ATK as DMG,
+// and applying the Heartsearer effect to the opponent damaged by said Arrow for 10s. Opponents affected by Heartsearer
+// take 28% more Charged Attack DMG from the wielder. A Sunfire Arrow can be triggered once every 10s.
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	sunfireMult := 0.45 + float64(r)*0.15
+
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = 0.21 + 0.07*float64(r)
+	char.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase("scion", -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			e, ok := t.(*enemy.Enemy)
+			if !ok {
+				return nil
+			}
+			if !e.StatusIsActive(debuffKey) {
+				return nil
+			}
+			if atk.Info.AttackTag != attacks.AttackTagExtra {
+				return nil
+			}
+
+			return m
+		},
+	})
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		t, ok := args[0].(*enemy.Enemy)
+		if !ok {
+			return
+		}
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		if atk.Info.AttackTag != attacks.AttackTagExtra {
+			return
+		}
+
+		ai := info.AttackInfo{
+			ActorIndex: char.Index(),
+			Abil:       "Sunfire Arrow",
+			AttackTag:  attacks.AttackTagWeaponSkill,
+			ICDTag:     attacks.ICDTagNone,
+			ICDGroup:   attacks.ICDGroupDefault,
+			StrikeType: attacks.StrikeTypePierce,
+			Element:    attributes.Physical,
+			Durability: 100,
+			Mult:       sunfireMult,
+		}
+		c.QueueAttack(ai, combat.NewCircleHitOnTarget(t, nil, 3.5), 0.25*60, 0.25*60, w.applyDebuff)
+		char.AddStatus(icdKey, 10*60, true)
+	}, fmt.Sprintf("scion-%v", char.Base.Key.String()))
+	return w, nil
+}
+
+func (w *Weapon) applyDebuff(a info.AttackCB) {
+	e, ok := a.Target.(*enemy.Enemy)
+	if !ok {
+		return
+	}
+	e.AddStatus(debuffKey, 10*60, true)
+}

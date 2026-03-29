@@ -1,0 +1,87 @@
+package skyward
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.SkywardHarp, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	// Increases CRIT DMG by 20%. Hits have a 60% chance to inflict a small AoE attack, dealing 125% Physical
+	// ATK DMG. Can only occur once every 4s.
+	w := &Weapon{}
+	r := p.Refine
+
+	// free crit damage
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.CD] = 0.15 + float64(r)*0.05
+	char.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("skyward harp", -1),
+		AffectedStat: attributes.NoStat,
+		Amount: func() []float64 {
+			return m
+		},
+	})
+
+	// procs
+	prob := 0.5 + 0.1*float64(r)
+	const icdKey = "skyward-harp-icd"
+	cd := 270 - 30*r
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		dmg := args[2].(float64)
+		trg := args[0].(info.Target)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		if c.Rand.Float64() > prob {
+			return
+		}
+		if dmg == 0 {
+			return
+		}
+
+		ai := info.AttackInfo{
+			ActorIndex: char.Index(),
+			Abil:       "Skyward Harp Proc",
+			AttackTag:  attacks.AttackTagWeaponSkill,
+			ICDTag:     attacks.ICDTagNone,
+			ICDGroup:   attacks.ICDGroupDefault,
+			StrikeType: attacks.StrikeTypePierce,
+			Element:    attributes.Physical,
+			Durability: 100,
+			Mult:       1.25,
+		}
+		c.QueueAttack(ai, combat.NewCircleHitOnTarget(trg, nil, 3), 0, 1)
+
+		char.AddStatus(icdKey, cd, true)
+	}, fmt.Sprintf("skyward-harp-%v", char.Base.Key.String()))
+
+	return w, nil
+}

@@ -1,0 +1,89 @@
+package kaveh
+
+import (
+	"lazyimpact/gcsim/internal/frames"
+	"lazyimpact/gcsim/pkg/core/action"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+var burstFrames []int
+
+const (
+	burstHitmark     = 36
+	burstDuration    = 720
+	burstKey         = "kaveh-q"
+	burstDmgBonusKey = "kaveh-q-dmg-bonus"
+)
+
+func init() {
+	burstFrames = frames.InitAbilSlice(49)
+	burstFrames[action.ActionAttack] = 48
+	burstFrames[action.ActionDash] = 44
+	burstFrames[action.ActionJump] = 44
+	burstFrames[action.ActionWalk] = 48
+	burstFrames[action.ActionSwap] = 42
+}
+
+func (c *char) Burst(p map[string]int) (action.Info, error) {
+	c.a4Stacks = 0
+
+	ai := info.AttackInfo{
+		ActorIndex: c.Index(),
+		Abil:       "Painted Dome",
+		AttackTag:  attacks.AttackTagElementalBurst,
+		ICDTag:     attacks.ICDTagNone,
+		ICDGroup:   attacks.ICDGroupDefault,
+		StrikeType: attacks.StrikeTypeDefault,
+		Element:    attributes.Dendro,
+		Durability: 50,
+		Mult:       burst[c.TalentLvlBurst()],
+	}
+	ap := combat.NewCircleHitOnTarget(c.Core.Combat.Player(), nil, 5)
+	c.Core.QueueAttack(ai, ap, burstHitmark, burstHitmark)
+	c.SetCD(action.ActionBurst, 1200)
+	c.ConsumeEnergy(3)
+
+	c.Core.Tasks.Add(func() {
+		c.ruptureDendroCores(ap)
+		c.AddStatus(burstKey, burstDuration, true)
+		c.a4()
+		if c.Base.Cons >= 2 {
+			c.c2()
+		}
+		for _, char := range c.Core.Player.Chars() {
+			char.AddReactBonusMod(character.ReactBonusMod{
+				Base: modifier.NewBaseWithHitlag(burstDmgBonusKey, burstDuration),
+				Amount: func(ai info.AttackInfo) float64 {
+					if ai.AttackTag == attacks.AttackTagBloom {
+						return burstDmgBonus[c.TalentLvlBurst()]
+					}
+					return 0
+				},
+			})
+		}
+	}, burstHitmark)
+
+	return action.Info{
+		Frames:          frames.NewAbilFunc(burstFrames),
+		AnimationLength: burstFrames[action.InvalidAction],
+		CanQueueAfter:   burstFrames[action.ActionSwap], // earliest cancel
+		State:           action.BurstState,
+	}, nil
+}
+
+func (c *char) addBurstExitHandler() {
+	c.Core.Events.Subscribe(event.OnCharacterSwap, func(_ ...any) {
+		c.DeleteStatus(burstKey)
+		c.DeleteStatus(a4Key)
+		c.DeleteStatus(c2Key)
+		for _, char := range c.Core.Player.Chars() {
+			char.DeleteStatus(burstDmgBonusKey)
+		}
+	}, "kaveh-exit")
+}

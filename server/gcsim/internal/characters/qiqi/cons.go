@@ -1,0 +1,50 @@
+package qiqi
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func (c *char) c1(a info.AttackCB) {
+	e, ok := a.Target.(*enemy.Enemy)
+	if !ok {
+		return
+	}
+
+	if !e.StatusIsActive(talismanKey) {
+		return
+	}
+
+	c.AddEnergy("qiqi-c1", 2)
+	c.Core.Log.NewEvent("Qiqi C1 Activation - Adding 2 energy", glog.LogCharacterEvent, c.Index()).
+		Write("target", a.Target.Key())
+}
+
+// Qiqi's Normal and Charge Attack DMG against opponents affected by Cryo is increased by 15%.
+func (c *char) c2() {
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = .15
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase("qiqi-c2", -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			if atk.Info.AttackTag != attacks.AttackTagNormal && atk.Info.AttackTag != attacks.AttackTagExtra {
+				return nil
+			}
+
+			e, ok := t.(*enemy.Enemy)
+			if !ok {
+				return nil
+			}
+			if !e.AuraContains(attributes.Cryo, attributes.Frozen) {
+				return nil
+			}
+
+			return m
+		},
+	})
+}

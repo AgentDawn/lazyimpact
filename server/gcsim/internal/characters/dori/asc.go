@@ -1,0 +1,79 @@
+package dori
+
+import (
+	"lazyimpact/gcsim/pkg/core/action"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/enemy"
+)
+
+// After a character connected to the Jinni triggers an Electro-Charged, Superconduct, Overloaded, Quicken, Aggravate, Hyperbloom,
+// or an Electro Swirl or Crystallize reaction, the CD of Spirit-Warding Lamp: Troubleshooter Cannon is decreased by 1s.
+// This effect can be triggered once every 3s.
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+
+	const icdKey = "dori-a1"
+	icd := 180 // 3s * 60
+	reduce := func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+
+		if c.Core.Player.Active() != atk.Info.ActorIndex { // only for on field character
+			return
+		}
+		if c.StatusIsActive(icdKey) {
+			return
+		}
+		c.AddStatus(icdKey, icd, true)
+		c.ReduceActionCooldown(action.ActionSkill, 60)
+		c.Core.Log.NewEvent("dori a1 proc", glog.LogCharacterEvent, c.Index()).
+			Write("reaction", atk.Info.Abil).
+			Write("new cd", c.Cooldown(action.ActionSkill))
+	}
+	reduceNoGadget := func(args ...any) {
+		if _, ok := args[0].(*enemy.Enemy); ok {
+			reduce(args...)
+		}
+	}
+
+	c.Core.Events.Subscribe(event.OnOverload, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnElectroCharged, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnLunarCharged, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnSuperconduct, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnQuicken, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnAggravate, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnHyperbloom, reduce, "dori-a1")
+	c.Core.Events.Subscribe(event.OnCrystallizeElectro, reduceNoGadget, "dori-a1")
+	c.Core.Events.Subscribe(event.OnSwirlElectro, reduceNoGadget, "dori-a1")
+}
+
+// When the Troubleshooter Shots or After-Sales Service Rounds from Spirit-Warding Lamp: Troubleshooter Cannon hit opponents,
+// Dori will restore 5 Elemental Energy for every 100% Energy Recharge possessed.
+// Per Spirit-Warding Lamp: Troubleshooter Cannon, only one instance of Energy restoration can be triggered
+// and a maximum of 15 Energy can be restored this way.
+func (c *char) makeA4CB() info.AttackCBFunc {
+	if c.Base.Ascension < 4 {
+		return nil
+	}
+
+	done := false
+	return func(a info.AttackCB) {
+		if a.Target.Type() != info.TargettableEnemy {
+			return
+		}
+		if done {
+			return
+		}
+		done = true
+
+		a4Energy := a.AttackEvent.Snapshot.Stats[attributes.ER] * 5
+		if a4Energy > 15 {
+			a4Energy = 15
+		}
+		c.AddEnergy("dori-a4", a4Energy)
+	}
+}

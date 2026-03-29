@@ -1,0 +1,87 @@
+package kaveh
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	a1ICDKey = "kaveh-a1-icd"
+	a4Key    = "kaveh-a4"
+	a4ICDKey = "kaveh-a4-icd"
+)
+
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+	c.Core.Events.Subscribe(event.OnPlayerHit, func(args ...any) {
+		char := args[0].(int)
+		// don't trigger if kaveh was not hit
+		if char != c.Index() {
+			return
+		}
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.AttackTag != attacks.AttackTagBloom &&
+			atk.Info.AttackTag != attacks.AttackTagHyperbloom &&
+			atk.Info.AttackTag != attacks.AttackTagBurgeon {
+			return
+		}
+		if c.StatusIsActive(a1ICDKey) {
+			return
+		}
+		c.AddStatus(a1ICDKey, 30, true)
+		c.Core.Player.Heal(info.HealInfo{
+			Caller:  c.Index(),
+			Target:  c.Index(),
+			Message: "Creator's Undertaking (A1)",
+			Src:     3.0 * c.Stat(attributes.EM),
+			Bonus:   c.Stat(attributes.Heal),
+		})
+	}, "kaveh-a1")
+}
+
+func (c *char) a4() {
+	m := make([]float64, attributes.EndStatType)
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBaseWithHitlag(a4Key, burstDuration),
+		AffectedStat: attributes.EM,
+		Amount: func() []float64 {
+			m[attributes.EM] = float64(25 * c.a4Stacks)
+			return m
+		},
+	})
+}
+
+func (c *char) a4AddStacksHandler() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
+		if c.a4Stacks >= 4 {
+			return
+		}
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != c.Index() {
+			return
+		}
+		if atk.Info.AttackTag != attacks.AttackTagNormal &&
+			atk.Info.AttackTag != attacks.AttackTagExtra &&
+			atk.Info.AttackTag != attacks.AttackTagPlunge {
+			return
+		}
+		if !c.StatusIsActive(burstKey) {
+			return
+		}
+		if c.StatusIsActive(a4ICDKey) {
+			return
+		}
+
+		c.AddStatus(a4ICDKey, 6, true)
+		c.a4Stacks++
+	}, "kaveh-a4")
+}

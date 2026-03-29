@@ -1,0 +1,73 @@
+package deepwood
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterSetFunc(keys.DeepwoodMemories, NewSet)
+}
+
+type Set struct {
+	Index int
+	Count int
+}
+
+func (s *Set) SetIndex(idx int) { s.Index = idx }
+func (s *Set) GetCount() int    { return s.Count }
+func (s *Set) Init() error      { return nil }
+
+// 2-Piece Bonus: Dendro DMG Bonus +15%.
+// 4-Piece Bonus: After Elemental Skills or Bursts hit opponents, the targets’ Dendro RES will be decreased by 30% for 8s.
+// This effect can be triggered even if the equipping character is not on the field.
+func NewSet(c *core.Core, char *character.CharWrapper, count int, param map[string]int) (info.Set, error) {
+	s := Set{Count: count}
+
+	if count >= 2 {
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.DendroP] = 0.15
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBase("dm-2pc", -1),
+			AffectedStat: attributes.DendroP,
+			Amount: func() []float64 {
+				return m
+			},
+		})
+	}
+	if count >= 4 {
+		c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+			atk := args[1].(*info.AttackEvent)
+			t, ok := args[0].(*enemy.Enemy)
+			if !ok {
+				return
+			}
+			if atk.Info.ActorIndex != char.Index() {
+				return
+			}
+
+			if atk.Info.AttackTag != attacks.AttackTagElementalArt && atk.Info.AttackTag != attacks.AttackTagElementalArtHold && atk.Info.AttackTag != attacks.AttackTagElementalBurst {
+				return
+			}
+
+			t.AddResistMod(info.ResistMod{
+				Base:  modifier.NewBaseWithHitlag("dm-4pc", 8*60),
+				Ele:   attributes.Dendro,
+				Value: -0.3,
+			})
+			c.Log.NewEvent("dm 4pc proc", glog.LogArtifactEvent, char.Index()).Write("char", char.Index())
+		}, fmt.Sprintf("dm-4pc-%v", char.Base.Key.String()))
+	}
+
+	return &s, nil
+}

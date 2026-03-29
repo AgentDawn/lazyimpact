@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genshinsim/gcsim/pkg/simulator"
+	"lazyimpact/gcsim/pkg/simulator"
 	"golang.org/x/crypto/bcrypt"
 )
 

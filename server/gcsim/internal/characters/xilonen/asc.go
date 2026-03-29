@@ -1,0 +1,112 @@
+package xilonen
+
+import (
+	"slices"
+
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	a1IcdKey = "xilonen-a1-icd"
+	a1Key    = "xilonen-a1"
+
+	a4IcdKey = "xilonen-a4-icd"
+	a4Key    = "xilonen-a4"
+)
+
+func (c *char) a1() {
+	if c.Base.Ascension < 1 {
+		return
+	}
+	if c.samplersConverted >= 2 {
+		c.Core.Events.Subscribe(event.OnCharacterSwap, func(args ...any) {
+			if c.StatusIsActive(activeSamplerKey) {
+				c.sampleSrc = c.Core.F
+				c.activeSamplers(c.sampleSrc)()
+			}
+		}, "xilonen-a1-swap")
+		return
+	}
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = 0.30
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase(a1Key, -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			if atk.Info.AttackTag != attacks.AttackTagPlunge && atk.Info.AttackTag != attacks.AttackTagNormal {
+				return nil
+			}
+			if !slices.Contains(atk.Info.AdditionalTags, attacks.AdditionalTagNightsoul) {
+				return nil
+			}
+			return m
+		},
+	})
+}
+
+func (c *char) a1cb(cb info.AttackCB) {
+	if c.Base.Ascension < 1 {
+		return
+	}
+	if c.samplersConverted < 2 {
+		return
+	}
+	if c.nightsoulState.Points() < 0.001 {
+		return
+	}
+	if c.StatusIsActive(a1IcdKey) {
+		return
+	}
+
+	c.AddStatus(a1IcdKey, 0.1*60, true)
+	c.nightsoulState.GeneratePoints(35)
+	if c.nightsoulState.Points() >= c.nightsoulState.MaxPoints {
+		c.a4MaxPoints(cb.Target, cb.AttackEvent)
+		c.a1MaxPoints()
+	}
+}
+
+func (c *char) a1MaxPoints() {
+	c.nightsoulState.ClearPoints()
+	c.AddStatus(activeSamplerKey, 15*60, false)
+	if c.Base.Cons >= 2 {
+		c.AddStatus(c2key, 15*60, true)
+	}
+	c.sampleSrc = c.Core.F
+	c.activeSamplers(c.sampleSrc)()
+	c.c2activate()
+}
+
+func (c *char) a4() {
+	if c.Base.Ascension < 4 {
+		return
+	}
+
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DEFP] = 0.20
+
+	c.Core.Events.Subscribe(event.OnNightsoulBurst, func(args ...any) {
+		c.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag(a4Key, 15*60),
+			AffectedStat: attributes.DEFP,
+			Amount: func() []float64 {
+				return m
+			},
+		})
+	}, a4Key)
+}
+
+func (c *char) a4MaxPoints(t info.Target, ae *info.AttackEvent) {
+	if c.Base.Ascension < 4 {
+		return
+	}
+	if c.StatusIsActive(a4IcdKey) {
+		return
+	}
+	c.AddStatus(a4IcdKey, 14*60, true)
+	c.Core.Events.Emit(event.OnNightsoulBurst, t, ae)
+}

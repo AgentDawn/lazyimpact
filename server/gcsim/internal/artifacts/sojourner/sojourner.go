@@ -1,0 +1,57 @@
+package sojourner
+
+import (
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterSetFunc(keys.ResolutionOfSojourner, NewSet)
+}
+
+type Set struct {
+	Index int
+	Count int
+}
+
+func (s *Set) SetIndex(idx int) { s.Index = idx }
+func (s *Set) GetCount() int    { return s.Count }
+func (s *Set) Init() error      { return nil }
+
+func NewSet(c *core.Core, char *character.CharWrapper, count int, param map[string]int) (info.Set, error) {
+	s := Set{Count: count}
+
+	// 2 Piece: ATK +18%
+	if count >= 2 {
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.ATKP] = 0.18
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBase("sojourner-2pc", -1),
+			AffectedStat: attributes.ATKP,
+			Amount: func() []float64 {
+				return m
+			},
+		})
+	}
+	// 4 Piece: Increases Charged Attack CRIT Rate by 30%.
+	if count >= 4 {
+		m := make([]float64, attributes.EndStatType)
+		m[attributes.CR] = 0.30
+		char.AddAttackMod(character.AttackMod{
+			Base: modifier.NewBase("sojourner-4pc", -1),
+			Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+				if atk.Info.AttackTag != attacks.AttackTagExtra {
+					return nil
+				}
+				return m
+			},
+		})
+	}
+
+	return &s, nil
+}

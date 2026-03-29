@@ -1,0 +1,76 @@
+package kirara
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/core/player/shield"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const (
+	c4IcdStatus = "kirara-c4-icd"
+	c6Status    = "kirara-c6"
+)
+
+// C2 is not implemented, co-op only
+// When Kirara is in the Urgent Neko Parcel state of Meow-teor Kick, she will grant other party members she crashes into Critical Transport Shields.
+// The DMG absorption of Critical Transport Shield is 40% of the maximum absorption Meow-teor Kick's normal Shields of Safe Transport
+// are capable of, and will absorb Dendro DMG with 250% effectiveness.
+// Critical Transport Shields last 12s and can be triggered once on each character every 10s.
+
+// After active character(s) protected by Shields of Safe Transport or Critical Transport Shields hit opponents with Normal, Charged, or Plunging Attacks,
+// Kirara will perform a coordinated attack with them using Small Cat Grass Cardamoms, dealing 200% of her ATK as Dendro DMG. DMG dealt this way is
+// considered Elemental Burst DMG. This effect can be triggered once every 3.8s. This CD is shared between all party members.
+func (c *char) c4() {
+	c.Core.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		if c.StatusIsActive(c4IcdStatus) {
+			return
+		}
+		existingShield := c.Core.Player.Shields.Get(shield.KiraraSkill)
+		if existingShield == nil {
+			return
+		}
+
+		atk := args[1].(*info.AttackEvent)
+		switch atk.Info.AttackTag {
+		case attacks.AttackTagNormal,
+			attacks.AttackTagExtra,
+			attacks.AttackTagPlunge:
+		default:
+			return
+		}
+		t := args[0].(info.Target)
+
+		// TODO: snapshot? damage delay?
+		ai := info.AttackInfo{
+			ActorIndex:         c.Index(),
+			Abil:               "Steed of Skanda",
+			AttackTag:          attacks.AttackTagElementalBurst,
+			ICDTag:             attacks.ICDTagElementalBurst,
+			ICDGroup:           attacks.ICDGroupDefault,
+			StrikeType:         attacks.StrikeTypeDefault,
+			Element:            attributes.Dendro,
+			Durability:         25,
+			Mult:               2,
+			CanBeDefenseHalted: true,
+		}
+		c.Core.QueueAttack(ai, combat.NewCircleHitOnTarget(t, nil, 2), 0, 0)
+		c.AddStatus(c4IcdStatus, 3.8*60, true)
+	}, "kirara-c4")
+}
+
+// All nearby party members will gain 12% All Elemental DMG Bonus within 15s after Kirara uses her Elemental Skill or Burst.
+func (c *char) c6() {
+	for _, char := range c.Core.Player.Chars() {
+		char.AddStatMod(character.StatMod{
+			Base: modifier.NewBaseWithHitlag(c6Status, 15*60),
+			Amount: func() []float64 {
+				return c.c6Buff
+			},
+		})
+	}
+}

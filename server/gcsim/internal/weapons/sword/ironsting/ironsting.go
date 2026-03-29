@@ -1,0 +1,74 @@
+package ironsting
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.IronSting, NewWeapon)
+}
+
+type Weapon struct {
+	Index  int
+	stacks int
+	buff   []float64
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+const (
+	icdKey  = "ironsting-icd"
+	buffKey = "ironsting"
+)
+
+// Dealing Elemental DMG increases all DMG by 6% for 6s. Max 2 stacks. Can occur once every 1s.
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	dmgbuff := 0.045 + 0.015*float64(r)
+	w.buff = make([]float64, attributes.EndStatType)
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if atk.Info.Element == attributes.Physical {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		char.AddStatus(icdKey, 60, true)
+		if !char.StatModIsActive(buffKey) {
+			w.stacks = 0
+		}
+		if w.stacks < 2 {
+			w.stacks++
+			w.buff[attributes.DmgP] = dmgbuff * float64(w.stacks)
+		}
+		// refresh mod
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag("ironsting", 360),
+			AffectedStat: attributes.NoStat,
+			Amount: func() []float64 {
+				return w.buff
+			},
+		})
+	}, fmt.Sprintf("ironsting-%v", char.Base.Key.String()))
+
+	return w, nil
+}

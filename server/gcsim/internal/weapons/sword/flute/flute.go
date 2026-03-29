@@ -1,0 +1,84 @@
+package flute
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.TheFlute, NewWeapon)
+}
+
+// Normal or Charged Attacks grant a Harmonic on hits. Gaining 5 Harmonics triggers the
+// power of music and deals 100% ATK DMG to surrounding opponents. Harmonics last up to 30s,
+// and a maximum of 1 can be gained every 0.5s.
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+const (
+	icdKey      = "flute-icd"
+	durationKey = "flute-stack-duration"
+)
+
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	stacks := 0
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		if atk.Info.AttackTag != attacks.AttackTagNormal && atk.Info.AttackTag != attacks.AttackTagExtra {
+			return
+		}
+		if char.StatusIsActive(icdKey) {
+			return
+		}
+		char.AddStatus(icdKey, 30, true) // every 0.5s
+		if !char.StatusIsActive(durationKey) {
+			stacks = 0
+		}
+		stacks++
+		// stacks lasts 30s
+		char.AddStatus(durationKey, 1800, true)
+
+		if stacks == 5 {
+			// trigger dmg at 5 stacks
+			stacks = 0
+			char.DeleteStatus(durationKey)
+
+			ai := info.AttackInfo{
+				ActorIndex: char.Index(),
+				Abil:       "Flute Proc",
+				AttackTag:  attacks.AttackTagWeaponSkill,
+				ICDTag:     attacks.ICDTagNone,
+				ICDGroup:   attacks.ICDGroupDefault,
+				StrikeType: attacks.StrikeTypeDefault,
+				Element:    attributes.Physical,
+				Durability: 100,
+				Mult:       0.75 + 0.25*float64(r),
+			}
+			trg := args[0].(info.Target)
+			c.QueueAttack(ai, combat.NewCircleHitOnTarget(trg, nil, 4), 0, 1)
+		}
+	}, fmt.Sprintf("flute-%v", char.Base.Key.String()))
+	return w, nil
+}

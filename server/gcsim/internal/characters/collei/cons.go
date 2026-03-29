@@ -1,0 +1,96 @@
+package collei
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/combat"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/enemy"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func (c *char) c1() {
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.ER] = 0.2
+	c.AddStatMod(character.StatMod{
+		Base:         modifier.NewBase("collei-c1", -1),
+		AffectedStat: attributes.ER,
+		Amount: func() []float64 {
+			if c.Core.Player.Active() != c.Index() {
+				return m
+			}
+			return nil
+		},
+	})
+}
+
+func (c *char) c2() {
+	//nolint:unparam // ignoring for now, event refactor should get rid of bool return of event sub
+	f := func(args ...any) {
+		if c.sproutShouldExtend {
+			return
+		}
+		if !c.StatusIsActive(sproutKey) && !c.StatusIsActive(skillKey) {
+			return
+		}
+		c.sproutShouldExtend = true
+		if c.StatusIsActive(sproutKey) {
+			c.ExtendStatus(sproutKey, 180)
+		}
+		c.Core.Log.NewEvent("collei c2 proc", glog.LogCharacterEvent, c.Index())
+	}
+
+	for _, evt := range dendroEvents {
+		switch evt {
+		case event.OnHyperbloom, event.OnBurgeon:
+			c.Core.Events.Subscribe(evt, f, "collei-c2")
+		default:
+			c.Core.Events.Subscribe(evt, func(args ...any) {
+				if _, ok := args[0].(*enemy.Enemy); ok {
+					f(args...)
+				}
+			}, "collei-c2")
+		}
+	}
+}
+
+func (c *char) c4() {
+	for i, char := range c.Core.Player.Chars() {
+		// does not affect collei
+		if c.Index() == i {
+			continue
+		}
+		amts := make([]float64, attributes.EndStatType)
+		amts[attributes.EM] = 60
+		char.AddStatMod(character.StatMod{
+			Base:         modifier.NewBaseWithHitlag("collei-c4", 720),
+			AffectedStat: attributes.EM,
+			Amount: func() []float64 {
+				return amts
+			},
+		})
+	}
+}
+
+func (c *char) c6(t info.Target) {
+	ai := info.AttackInfo{
+		ActorIndex: c.Index(),
+		Abil:       "Forest of Falling Arrows (C6)",
+		AttackTag:  attacks.AttackTagNone, // in game has this as AttackTagColleiC6
+		ICDTag:     attacks.ICDTagNone,
+		ICDGroup:   attacks.ICDGroupDefault,
+		StrikeType: attacks.StrikeTypeDefault,
+		Element:    attributes.Dendro,
+		Durability: 25,
+		Mult:       2,
+	}
+	c.Core.QueueAttack(
+		ai,
+		combat.NewCircleHitOnTarget(t, nil, 4),
+		0,
+		22,
+	)
+}

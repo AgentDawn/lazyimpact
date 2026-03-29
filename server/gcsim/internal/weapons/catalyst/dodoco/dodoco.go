@@ -1,0 +1,70 @@
+package dodoco
+
+import (
+	"fmt"
+
+	"lazyimpact/gcsim/pkg/core"
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/keys"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+func init() {
+	core.RegisterWeaponFunc(keys.DodocoTales, NewWeapon)
+}
+
+type Weapon struct {
+	Index int
+}
+
+func (w *Weapon) SetIndex(idx int) { w.Index = idx }
+func (w *Weapon) Init() error      { return nil }
+
+// Normal Attack hits on opponents increase Charged Attack DMG by 16% for 6s. Charged Attack hits on opponents
+// increase ATK by 8% for 6s.
+func NewWeapon(c *core.Core, char *character.CharWrapper, p info.WeaponProfile) (info.Weapon, error) {
+	w := &Weapon{}
+	r := p.Refine
+
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = .12 + float64(r)*.04
+
+	n := make([]float64, attributes.EndStatType)
+	n[attributes.ATKP] = .06 + float64(r)*0.02
+
+	c.Events.Subscribe(event.OnEnemyDamage, func(args ...any) {
+		atk := args[1].(*info.AttackEvent)
+		if atk.Info.ActorIndex != char.Index() {
+			return
+		}
+		if c.Player.Active() != char.Index() {
+			return
+		}
+		switch atk.Info.AttackTag {
+		case attacks.AttackTagNormal:
+			char.AddAttackMod(character.AttackMod{
+				Base: modifier.NewBaseWithHitlag("dodoco-ca", 360),
+				Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+					if atk.Info.AttackTag != attacks.AttackTagExtra {
+						return nil
+					}
+					return m
+				},
+			})
+		case attacks.AttackTagExtra:
+			char.AddStatMod(character.StatMod{
+				Base:         modifier.NewBaseWithHitlag("dodoco-atk", 360),
+				AffectedStat: attributes.NoStat,
+				Amount: func() []float64 {
+					return n
+				},
+			})
+		}
+	}, fmt.Sprintf("dodoco-%v", char.Base.Key.String()))
+
+	return w, nil
+}

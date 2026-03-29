@@ -1,0 +1,55 @@
+package layla
+
+import (
+	"lazyimpact/gcsim/pkg/core/attacks"
+	"lazyimpact/gcsim/pkg/core/attributes"
+	"lazyimpact/gcsim/pkg/core/event"
+	"lazyimpact/gcsim/pkg/core/glog"
+	"lazyimpact/gcsim/pkg/core/info"
+	"lazyimpact/gcsim/pkg/core/player/character"
+	"lazyimpact/gcsim/pkg/modifier"
+)
+
+const c4Key = "layla-c4"
+
+// When Nights of Formal Focus starts to fire off Shooting Stars, it will grant all nearby party members the Dawn Star effect,
+// causing their Normal and Charged Attack DMG to increase based on 5% of Layla's Max HP.
+// Dawn Star can last up to 3s and will be removed 0.05s after dealing Normal or Charged Attack DMG.
+func (c *char) c4() {
+	c.Core.Events.Subscribe(event.OnEnemyHit, func(args ...any) {
+		ae := args[1].(*info.AttackEvent)
+		if ae.Info.AttackTag != attacks.AttackTagNormal && ae.Info.AttackTag != attacks.AttackTagExtra {
+			return
+		}
+
+		char := c.Core.Player.ByIndex(ae.Info.ActorIndex)
+		if !char.StatusIsActive(c4Key) {
+			return
+		}
+
+		dmgAdded := 0.05 * c.MaxHP()
+		ae.Info.FlatDmg += dmgAdded
+
+		c.QueueCharTask(func() { char.DeleteStatus(c4Key) }, 0.05*60)
+
+		c.Core.Log.NewEvent("layla c4 adding damage", glog.LogPreDamageMod, ae.Info.ActorIndex).
+			Write("damage_added", dmgAdded)
+	}, "layla-c4")
+}
+
+// Shooting Stars from Nights of Formal Focus deal 40% increased DMG, and Starlight Slugs from Dream of the Star-Stream Shaker deal 40% increased DMG.
+// Additionally, the interval between the creation of Night Stars via Nights of Formal Focus is decreased by 20%.
+func (c *char) c6() {
+	m := make([]float64, attributes.EndStatType)
+	m[attributes.DmgP] = 0.4
+
+	c.AddAttackMod(character.AttackMod{
+		Base: modifier.NewBase("layla-c6", -1),
+		Amount: func(atk *info.AttackEvent, t info.Target) []float64 {
+			if atk.Info.AttackTag != attacks.AttackTagElementalBurst && atk.Info.Abil != shootingStarsAbil {
+				return nil
+			}
+			return m
+		},
+	})
+}
