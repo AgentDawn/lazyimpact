@@ -17,7 +17,6 @@
       <ul class="nav__links">
         <li><a href="index.html" class="nav__link" data-i18n="nav.home">홈</a></li>
         <li><a href="smart-discard.html" class="nav__link">스마트 폐기</a></li>
-        <li><a href="planner.html" class="nav__link">플래너</a></li>
         <li><a href="abyss.html" class="nav__link">나선비경</a></li>
       </ul>
     </div>
@@ -86,13 +85,35 @@
       <div id="home-todo-cards" style="display:flex;flex-direction:column;gap:0.75rem"></div>
     </section>
 
-    <!-- Quick Links -->
-    <section>
+    <!-- Theater Roster + Optimize -->
+    <section style="margin-bottom:2rem">
       <h2 style="font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
-        <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--on-surface-variant)">apps</span>
-        바로가기
+        <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--tertiary)">theater_comedy</span>
+        환상극 준비 현황
       </h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:0.75rem" id="home-shortcuts"></div>
+      <div id="theater-roster"></div>
+      <div id="theater-prep-content" style="margin-top:1rem"></div>
+      <button class="btn-primary" id="btn-theater-optimize" style="margin-top:1rem">환상극 최적화 (DFS 완전탐색)</button>
+      <div id="theater-optimize-progress" style="display:none"></div>
+      <div id="theater-optimize-result" style="display:none;margin-top:1rem"></div>
+    </section>
+
+    <!-- Daily Resin -->
+    <section style="margin-bottom:2rem">
+      <h2 style="font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
+        <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--secondary)">bolt</span>
+        오늘의 레진 계획 <span style="color:var(--primary);font-size:0.875rem;font-weight:700" id="resin-display"></span>
+      </h2>
+      <div id="daily-plan"></div>
+    </section>
+
+    <!-- Weekly BP -->
+    <section style="margin-bottom:2rem">
+      <h2 style="font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
+        <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--on-surface-variant)">military_tech</span>
+        주간 기행 미션
+      </h2>
+      <div id="weekly-bp"></div>
     </section>
   </div>
 
@@ -116,5 +137,6 @@
 
 <script src="js/i18n.js"></script>
 <script src="js/app.js"></script>
+<script src="js/planner.js"></script>
 </body>
 </html>

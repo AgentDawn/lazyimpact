@@ -35,9 +35,20 @@
       <button type="submit" class="btn-primary" id="auth-submit" data-i18n="auth.signin" style="margin-top:0.5rem">로그인</button>
     </form>
 
-    <p style="text-align:center;margin-top:1.5rem;font-size:0.75rem;color:var(--on-surface-variant)">
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-top:1.25rem">
+      <hr style="flex:1;border:none;border-top:1px solid var(--outline-variant)"/>
+      <span style="font-size:0.6875rem;color:var(--on-surface-variant)">또는</span>
+      <hr style="flex:1;border:none;border-top:1px solid var(--outline-variant)"/>
+    </div>
+
+    <button id="btn-guest" style="width:100%;margin-top:1rem;padding:0.75rem;background:var(--surface-highest);border:1px solid var(--outline-variant);border-radius:var(--r-md);color:var(--on-surface);font-size:0.875rem;font-weight:600;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='var(--surface-bright)'" onmouseout="this.style.background='var(--surface-highest)'">
+      비회원으로 시작
+    </button>
+    <p style="text-align:center;font-size:0.625rem;color:var(--outline);margin-top:0.5rem">회원가입 없이 바로 사용할 수 있습니다. 데이터는 이 브라우저에 저장됩니다.</p>
+
+    <p style="text-align:center;margin-top:1.25rem;font-size:0.75rem;color:var(--on-surface-variant)">
       <span id="auth-toggle-text" data-i18n="auth.no.account">계정이 없으신가요?</span>
-      <button id="auth-toggle" data-i18n="auth.register" style="color:var(--primary);font-size:0.75rem;margin-left:0.25rem;text-decoration:underline">회원가입</button>
+      <button id="auth-toggle" data-i18n="auth.register" style="color:var(--primary);font-size:0.75rem;margin-left:0.25rem;text-decoration:underline;background:none;border:none;cursor:pointer">회원가입</button>
     </p>
 
     <div id="security-notice" style="display:none;margin-top:1.5rem;padding:0.75rem;background:rgba(77,219,206,0.08);border-radius:var(--r-md);border-left:2px solid var(--secondary)">
@@ -111,6 +122,19 @@
         'Login after registration failed': '회원가입 후 자동 로그인에 실패했습니다',
       }
       errorEl.textContent = errKo[err.message] || err.message
+      errorEl.style.display = 'block'
+    }
+  })
+
+  // Guest login
+  document.getElementById('btn-guest').addEventListener('click', async () => {
+    errorEl.style.display = 'none'
+    try {
+      const res = await fetch('/api/guest', { method: 'POST' })
+      if (!res.ok) throw new Error('게스트 계정 생성에 실패했습니다')
+      window.location.href = '/index.html'
+    } catch (err) {
+      errorEl.textContent = err.message
       errorEl.style.display = 'block'
     }
   })

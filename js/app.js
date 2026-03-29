@@ -273,8 +273,6 @@ async function initHome() {
     shortcutsEl.innerHTML = [
       shortcut('diamond', '성유물', 'artifacts.html', 'var(--secondary)'),
       shortcut('auto_delete', '스마트 폐기', 'smart-discard.html', 'var(--error)'),
-      shortcut('theater_comedy', '환상극', 'theater.html', 'var(--tertiary)'),
-      shortcut('event_note', '플래너', 'planner.html', 'var(--primary)'),
       shortcut('swords', '나선비경', 'abyss.html', 'var(--hydro)'),
     ].join('')
   }

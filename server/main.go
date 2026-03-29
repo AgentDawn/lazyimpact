@@ -33,6 +33,7 @@ func main() {
 	mux.HandleFunc("POST /api/register", handleRegister)
 	mux.HandleFunc("POST /api/login", handleLogin)
 	mux.HandleFunc("POST /api/logout", handleLogout)
+	mux.HandleFunc("POST /api/guest", handleGuest)
 	mux.HandleFunc("GET /api/me", handleMe)
 	mux.HandleFunc("PUT /api/me/lang", auth(handleUpdateLang))
 	mux.HandleFunc("PUT /api/me/preferences", auth(handleUpdatePreferences))
@@ -444,13 +445,17 @@ func generateSessionID() string {
 }
 
 func setSessionCookie(w http.ResponseWriter, sid string) {
+	setSessionCookieWithTTL(w, sid, sessionTTL)
+}
+
+func setSessionCookieWithTTL(w http.ResponseWriter, sid string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sid,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   int(ttl.Seconds()),
 	})
 }
 
@@ -564,6 +569,52 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	clearSessionCookie(w)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
+}
+
+const guestSessionTTL = 365 * 24 * time.Hour // 1 year
+
+func handleGuest(w http.ResponseWriter, r *http.Request) {
+	// Generate random guest username
+	b := make([]byte, 8)
+	rand.Read(b)
+	username := "guest_" + hex.EncodeToString(b)
+	password := hex.EncodeToString(b) + "_guest"
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, 500)
+		return
+	}
+
+	_, err = rqliteExec([]string{fmt.Sprintf(
+		"INSERT INTO users (username, password_hash) VALUES ('%s', '%s')",
+		esc(username), esc(string(hash)),
+	)})
+	if err != nil {
+		http.Error(w, `{"error":"failed to create guest"}`, 500)
+		return
+	}
+
+	// Get user ID
+	result, _ := rqliteQueryParam("SELECT id FROM users WHERE username = ?", username)
+	rows := parseRows(result)
+	if len(rows) == 0 {
+		http.Error(w, `{"error":"failed to create guest"}`, 500)
+		return
+	}
+	userID := str(rows[0]["id"])
+
+	// Create session with 1-year TTL
+	sid := generateSessionID()
+	expires := time.Now().UTC().Add(guestSessionTTL).Format("2006-01-02 15:04:05")
+	rqliteExec([]string{
+		fmt.Sprintf("INSERT INTO sessions (id, user_id, username, expires_at) VALUES ('%s', %s, '%s', '%s')",
+			sid, userID, esc(username), expires),
+	})
+
+	setSessionCookieWithTTL(w, sid, guestSessionTTL)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "username": username, "guest": "true"})
 }
 
 func handleMe(w http.ResponseWriter, r *http.Request) {
