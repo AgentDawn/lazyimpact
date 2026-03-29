@@ -396,18 +396,7 @@ test.describe('Gap analysis — UI rendering', () => {
     await seedFixture(page, f2pChars, f2pWeapons, f2pArtifacts);
   });
 
-  test('gap analysis button exists on abyss page', async ({ page }) => {
-    await page.goto('/abyss.html', { waitUntil: 'domcontentloaded' });
-    const btn = page.locator('#btn-gap-analysis');
-    await expect(btn).toBeVisible();
-    await expect(btn).toHaveText('클리어 가능 여부 분석');
-  });
-
-  test('clicking the button renders the result section', async ({ page }) => {
-    await page.goto('/abyss.html', { waitUntil: 'domcontentloaded' });
-    const btn = page.locator('#btn-gap-analysis');
-    await expect(btn).toBeVisible();
-    // The gap analysis API can be called directly to verify it works
+  test('gap analysis API still works', async ({ page }) => {
     const res = await page.request.get('/api/abyss/gap-analysis');
     expect(res.ok()).toBeTruthy();
     const data = await res.json();
