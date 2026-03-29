@@ -904,8 +904,8 @@ test.describe('Planner page UI', () => {
     await expect(page).toHaveTitle(/Planner/);
   });
 
-  test('page heading reads "Daily Planner"', async ({ page }) => {
-    await expect(page.locator('h1')).toHaveText('Daily Planner');
+  test('page heading reads "환상극 플래너"', async ({ page }) => {
+    await expect(page.locator('h1')).toHaveText('환상극 플래너');
   });
 
   test('theater prep section is rendered in the DOM', async ({ page }) => {
@@ -915,62 +915,6 @@ test.describe('Planner page UI', () => {
   test('theater prep section has the section title "환상극 대비 추천"', async ({ page }) => {
     const title = page.locator('#theater-prep .section-title');
     await expect(title).toContainText('환상극 대비 추천');
-  });
-
-  test('daily plan section is rendered in the DOM', async ({ page }) => {
-    await expect(page.locator('#daily-plan')).toBeVisible();
-  });
-
-  test('daily plan section title shows "오늘의 레진 계획"', async ({ page }) => {
-    await expect(page.locator('text=오늘의 레진 계획')).toBeVisible();
-  });
-
-  test('resin bar is visible once daily plan loads', async ({ page }) => {
-    // Wait for planner.js to render (replaces loading spinner)
-    await page.waitForFunction(
-      () => !document.querySelector('#daily-plan .empty-state'),
-      { timeout: 10000 },
-    );
-    // The resin bar is the flex container containing the gradient bar and the "X/160 레진" text
-    const resinText = page.locator('#daily-plan').getByText(/레진/);
-    await expect(resinText.first()).toBeVisible();
-  });
-
-  test('weekly BP section is rendered in the DOM', async ({ page }) => {
-    await expect(page.locator('#weekly-bp')).toBeVisible();
-  });
-
-  test('BP missions section shows "주간 기행 미션" title', async ({ page }) => {
-    await expect(page.locator('text=주간 기행 미션')).toBeVisible();
-  });
-
-  test('BP mission checkboxes are rendered after planner loads', async ({ page }) => {
-    // Wait for BP missions to render (spinner goes away)
-    await page.waitForFunction(
-      () => document.querySelector('#weekly-bp button[onclick*="toggleBP"]') !== null,
-      { timeout: 10000 },
-    );
-    const checkboxes = page.locator('#weekly-bp button[onclick*="toggleBP"]');
-    await expect(checkboxes).toHaveCount(12);
-  });
-
-  test('BP mission reset button is visible', async ({ page }) => {
-    await page.waitForFunction(
-      () => document.querySelector('#weekly-bp button[onclick="resetBP()"]') !== null,
-      { timeout: 10000 },
-    );
-    const resetBtn = page.locator('#weekly-bp button[onclick="resetBP()"]');
-    await expect(resetBtn).toBeVisible();
-    await expect(resetBtn).toContainText('미션 초기화');
-  });
-
-  test('BP progress shows "0/12 완료" initially', async ({ page }) => {
-    await page.waitForFunction(
-      () => document.querySelector('#weekly-bp') && document.querySelector('#weekly-bp').textContent.includes('완료'),
-      { timeout: 10000 },
-    );
-    const summary = page.locator('#weekly-bp').getByText(/완료/);
-    await expect(summary.first()).toContainText('0/12 완료');
   });
 
   test('theater prep content renders (no longer shows loading spinner)', async ({ page }) => {
@@ -1000,34 +944,10 @@ test.describe('Planner page UI', () => {
 // 7. Planner page UI — BP toggle interaction
 // ---------------------------------------------------------------------------
 
-test.describe('Planner page UI — BP checkbox toggle', () => {
-  let user;
-  test.beforeEach(async ({ page }) => {
-    user = uniq('ui_bp');
-    await loginAs(page, user);
-    await page.goto('/planner.html', { waitUntil: 'domcontentloaded' });
-    // Wait for BP missions to fully render
-    await page.waitForFunction(
-      () => document.querySelector('#weekly-bp button[onclick*="toggleBP"]') !== null,
-      { timeout: 10000 },
-    );
-  });
+test.describe('Planner page UI — BP checkbox toggle (skipped: BP removed from theater page)', () => {
+  test.skip();
 
-  test('clicking a BP checkbox triggers toggleBP and page reloads with updated state', async ({ page }) => {
-    // Capture the first mission's progress/target from the rendered text before click
-    const firstProgress = page.locator('#weekly-bp [onclick*="toggleBP"]').first();
-    await firstProgress.click();
-
-    // After reload the progress counter for the first item should show target/target
-    await page.waitForFunction(
-      () => document.querySelector('#weekly-bp button[onclick*="toggleBP"]') !== null,
-      { timeout: 10000 },
-    );
-
-    // The overall 완료 counter should now be 1/12
-    const summary = page.locator('#weekly-bp').getByText(/완료/);
-    await expect(summary.first()).toContainText('1/12 완료');
-  });
+  test('placeholder', async () => {});
 
   test('clicking reset button resets 완료 count back to 0/12', async ({ page }) => {
     // Mark one mission done first

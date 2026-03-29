@@ -1354,7 +1354,7 @@ function localizeWeaponType(wt) {
 }
 
 function localizeWeaponName(name) {
-  if (getLang() === 'ko') return weaponNameMap[name] || name
+  if (getLang() === 'ko') return weaponNameKo[name] || weaponNameMap[name] || name
   return name
 }
 

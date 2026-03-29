@@ -190,12 +190,13 @@ function renderCharCard(c) {
   const weaponName = localizeWeaponName(c.weapon || '')
   const element = localizeElement(c.element || '')
 
-  const artifactRows = (c.artifacts || []).map((a) =>
-    `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;padding:0.125rem 0">
+  const artifactRows = (c.artifacts || []).map((a) => {
+    const setDisplay = (typeof setNameKo !== 'undefined' && setNameKo[a.set]) ? setNameKo[a.set] : (a.set || '')
+    return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;padding:0.125rem 0">
       <span style="color:var(--on-surface-variant)">${a.slot || ''}</span>
-      <span style="font-weight:500">${a.set || ''} ${a.level != null ? `+${a.level}` : ''}</span>
+      <span style="font-weight:500">${setDisplay} ${a.level != null ? `+${a.level}` : ''}</span>
      </div>`
-  ).join('')
+  }).join('')
 
   const improvementsHtml = (c.improvements || []).map((imp) => {
     const prioColors = { high: 'var(--error)', medium: 'var(--tertiary)', low: 'var(--on-surface-variant)' }
