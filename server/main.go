@@ -2495,6 +2495,26 @@ func handleTheaterSeasons(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, result, err)
 }
 
+// Cumulative EXP required to reach each level (1-90)
+// Source: Genshin Impact wiki character EXP table
+var cumulativeEXP = [91]int{
+	0, 0, 1000, 2325, 4025, 6175, 8800, 11950, 15675, 20025, 25025, // 0-10
+	30725, 37175, 44400, 52450, 61375, 71200, 81950, 93675, 106400, 120175, // 11-20
+	135050, 151850, 169850, 189100, 209650, 231525, 254775, 279425, 305525, 333100, // 21-30
+	362200, 392850, 425100, 458975, 494525, 531775, 570750, 611500, 654075, 698500, // 31-40
+	744800, 795425, 848125, 902900, 959800, 1018875, 1080150, 1143675, 1209475, 1277575, // 41-50
+	1348000, 1424575, 1503625, 1585200, 1669325, 1756050, 1845400, 1937400, 2032100, 2129525, // 51-60
+	2229725, 2341550, 2455825, 2572550, 2691750, 2813425, 2937600, 3064300, 3193525, 3325300, // 61-70
+	3459625, 3602675, 3748500, 3897125, 4048575, 4202875, 4360050, 4520125, 4683125, 4849075, // 71-80
+	5018000, 5189925, 5364875, 5542875, 5723950, 5908125, 6095425, 6285875, 6479500, 6676325, // 81-90
+}
+
+// expToLevel80 returns EXP needed to go from current level to 80
+func expToLevel80(currentLevel int) int {
+	if currentLevel >= 80 || currentLevel < 1 { return 0 }
+	return cumulativeEXP[80] - cumulativeEXP[currentLevel]
+}
+
 func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 	uid := getUserID(r)
 
@@ -2553,11 +2573,7 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	weekday := int(now.Weekday())
 
-	// Domain schedule: Mon/Thu, Tue/Fri, Wed/Sat, Sun=all
-	domainDays := map[int]string{
-		0: "전체", 1: "월/목 소재", 2: "화/금 소재",
-		3: "수/토 소재", 4: "월/목 소재", 5: "화/금 소재", 6: "수/토 소재",
-	}
+	// Day of week for scheduling
 
 	type recommendation struct {
 		Category string `json:"category"`
@@ -2566,6 +2582,7 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 		Resin    int    `json:"resin"`
 		Priority int    `json:"priority"` // 1=highest
 		Tier     string `json:"tier,omitempty"`
+		Details  []string `json:"details,omitempty"`
 	}
 
 	recs := []recommendation{}
@@ -2623,26 +2640,39 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 					Priority: 1,
 				})
 			} else if !hasHighLevel {
-				// Find the highest-tier character for this element to recommend leveling
-				bestTier := "C"
+				// Find characters below 80 for this element with detailed level-up costs
+				type charLevelInfo struct {
+					Name  string
+					Level int
+					Books int
+					Resin int
+				}
+				var charsToLevel []charLevelInfo
 				for _, c := range filteredChars {
-					if str(c["element"]) == el {
-						t := str(c["tier"])
-						if t == "" {
-							t = "B"
-						}
-						if getTierPriority(t) < getTierPriority(bestTier) {
-							bestTier = t
-						}
+					if elementsMatch(str(c["element"]), el) && intVal(c["level"]) < 80 {
+						lv := intVal(c["level"])
+						expNeeded := expToLevel80(lv)
+						books := (expNeeded + 19999) / 20000 // 영웅의 지혜 = 20000 EXP
+						resin := (books / 4) * 20           // 지맥 1회(20레진) = ~4권
+						if resin < 20 { resin = 20 }
+						name := str(c["name"])
+						charsToLevel = append(charsToLevel, charLevelInfo{name, lv, books, resin})
 					}
 				}
+				details := []string{}
+				totalResin := 0
+				for _, ci := range charsToLevel {
+					details = append(details, fmt.Sprintf("%s Lv.%d→80: 영웅의 지혜 %d개, 지맥 %d 레진", ci.Name, ci.Level, ci.Books, ci.Resin))
+					totalResin += ci.Resin
+				}
+				if totalResin == 0 { totalResin = 40 }
 				recs = append(recs, recommendation{
 					Category: "환상극",
-					Title:    fmt.Sprintf("%s 캐릭터 레벨업 (Lv.80+)", el),
-					Reason:   fmt.Sprintf("%s 대비 — 보스/경험치 소재 수급 (최고 티어: %s)", title, bestTier),
-					Resin:    40,
+					Title:    fmt.Sprintf("%s 캐릭터 레벨업 필요 (%d명)", el, len(charsToLevel)),
+					Reason:   fmt.Sprintf("%s 대비 — 경험치 지맥 총 %d 레진 필요", title, totalResin),
+					Resin:    totalResin,
 					Priority: 2,
-					Tier:     bestTier,
+					Details:  details,
 				})
 			}
 		}
@@ -2727,33 +2757,55 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 		charactersNeeded = 0
 	}
 
-	// Daily resin plan (160 resin)
+	// Daily resin plan (160 resin) — based on optimization results
 	dailyPlan := []recommendation{}
 	resinLeft := 160
 
-	// Priority: artifact domain (if theater prep needed)
-	if len(recs) > 0 {
-		dailyPlan = append(dailyPlan, recommendation{
-			Category: "성유물",
-			Title:    "성유물 도메인 (" + domainDays[weekday] + ")",
-			Reason:   "환상극 대비 캐릭터 성유물 파밍",
-			Resin:    40,
-			Priority: 1,
-		})
-		resinLeft -= 40
+	// Load latest theater + abyss optimization results
+	type optMember struct {
+		Character map[string]interface{} `json:"character"`
+		Score     float64                `json:"score"`
+		Weapon    map[string]interface{} `json:"weapon"`
+		Improvements []string            `json:"improvements"`
+	}
+	type optResult struct {
+		Members []optMember `json:"members"`
+	}
+	type taggedMember struct {
+		optMember
+		Source string // "환상극" or "나선비경"
+	}
+	var selectedChars []taggedMember
+
+	for _, jobType := range []string{"theater", "abyss"} {
+		raw, _ := rqliteQueryParam(
+			"SELECT result FROM optimize_jobs WHERE user_id = ? AND type = ? AND status = 'done' ORDER BY finished_at DESC LIMIT 1",
+			uid, jobType,
+		)
+		rows := parseRows(raw)
+		if len(rows) > 0 && str(rows[0]["result"]) != "" {
+			var res optResult
+			json.Unmarshal([]byte(str(rows[0]["result"])), &res)
+			src := "환상극"
+			if jobType == "abyss" { src = "나선비경" }
+			for _, m := range res.Members {
+				selectedChars = append(selectedChars, taggedMember{m, src})
+			}
+		}
 	}
 
-	// Talent books (weekday specific)
-	dailyPlan = append(dailyPlan, recommendation{
-		Category: "특성",
-		Title:    "특성 소재 도메인 (" + domainDays[weekday] + ")",
-		Reason:   "캐릭터 특성 레벨업",
-		Resin:    40,
-		Priority: 2,
-	})
-	resinLeft -= 40
+	// Deduplicate by character name (keep first = theater priority)
+	seen := map[string]bool{}
+	var uniqueSelected []taggedMember
+	for _, m := range selectedChars {
+		name := str(m.Character["name"])
+		if name != "" && !seen[name] {
+			seen[name] = true
+			uniqueSelected = append(uniqueSelected, m)
+		}
+	}
 
-	// Weekly boss check (Mon-Wed recommended) — use actual user data
+	// 1. Weekly boss check (Mon-Wed recommended)
 	wbY, wbW := now.ISOWeek()
 	wbWeek := fmt.Sprintf("%d-W%02d", wbY, wbW)
 	wbCountRaw, _ := rqliteQueryParam(
@@ -2769,38 +2821,112 @@ func handlePlannerRecommend(w http.ResponseWriter, r *http.Request) {
 		dailyPlan = append(dailyPlan, recommendation{
 			Category: "보스",
 			Title:    fmt.Sprintf("주간 보스 처치 (할인 %d회 남음)", wbDiscountRemaining),
-			Reason:   "주간 보스 소재 수급 (할인 30 레진)",
+			Reason:   "돌파 소재 수급 — 할인 기간 내 처치 권장",
 			Resin:    30,
 			Priority: 1,
 		})
 		resinLeft -= 30
-	} else if weekday >= 1 && weekday <= 3 && wbDiscountRemaining == 0 {
-		dailyPlan = append(dailyPlan, recommendation{
-			Category: "보스",
-			Title:    "주간 보스 처치 (정가)",
-			Reason:   "주간 보스 소재 수급 (정가 60 레진)",
-			Resin:    60,
-			Priority: 1,
-		})
-		resinLeft -= 60
 	}
 
-	// Fill remaining with ley lines or weapon materials
-	if resinLeft >= 40 {
-		dailyPlan = append(dailyPlan, recommendation{
-			Category: "무기",
-			Title:    "무기 돌파 소재 도메인",
-			Reason:   domainDays[weekday] + " 무기 소재",
-			Resin:    40,
-			Priority: 3,
-		})
-		resinLeft -= 40
+	// 2. From optimizer-selected characters, find those needing level-up
+	type charNeed struct {
+		Name   string
+		Level  int
+		Books  int
+		Source string
 	}
+	var charsNeedLevel []charNeed
+	for _, m := range uniqueSelected {
+		lv := intVal(m.Character["level"])
+		name := str(m.Character["name"])
+		if lv < 80 && name != "" {
+			exp := expToLevel80(lv)
+			books := (exp + 19999) / 20000
+			charsNeedLevel = append(charsNeedLevel, charNeed{name, lv, books, m.Source})
+		}
+	}
+
+	if len(charsNeedLevel) > 0 && resinLeft >= 20 {
+		sort.Slice(charsNeedLevel, func(i, j int) bool { return charsNeedLevel[i].Level < charsNeedLevel[j].Level })
+		// Show top 1-2 characters
+		for idx := 0; idx < len(charsNeedLevel) && idx < 2 && resinLeft >= 20; idx++ {
+			c := charsNeedLevel[idx]
+			resinForLeyLine := 60
+			if resinForLeyLine > resinLeft {
+				resinForLeyLine = (resinLeft / 20) * 20
+			}
+			booksFromRun := (resinForLeyLine / 20) * 4
+			dailyPlan = append(dailyPlan, recommendation{
+				Category: "경험치",
+				Title:    fmt.Sprintf("[%s] %s Lv.%d→80 육성", c.Source, c.Name, c.Level),
+				Reason:   fmt.Sprintf("영웅의 지혜 %d개 부족, 지맥 %d회 = 약 %d개", c.Books, resinForLeyLine/20, booksFromRun),
+				Resin:    resinForLeyLine,
+				Priority: 1,
+			})
+			resinLeft -= resinForLeyLine
+		}
+	}
+
+	// 3. From optimizer-selected characters, find weapons needing level-up
+	for _, m := range uniqueSelected {
+		if resinLeft < 40 { break }
+		if m.Weapon != nil && intVal(m.Weapon["level"]) < 80 {
+			wpName := str(m.Weapon["name"])
+			wpLevel := intVal(m.Weapon["level"])
+			charName := str(m.Character["name"])
+			if wpName != "" {
+				dailyPlan = append(dailyPlan, recommendation{
+					Category: "무기",
+					Title:    fmt.Sprintf("[%s] %s의 무기 돌파 소재", m.Source, charName),
+					Reason:   fmt.Sprintf("%s Lv.%d → 무기 소재 비경", wpName, wpLevel),
+					Resin:    40,
+					Priority: 2,
+				})
+				resinLeft -= 40
+				break
+			}
+		}
+	}
+
+	// 4. From optimizer-selected characters, recommend artifact farming
+	if resinLeft >= 40 {
+		for _, m := range uniqueSelected {
+			charName := str(m.Character["name"])
+			if sets, ok := characterBestSets[charName]; ok && len(sets) > 0 {
+				setKo := sets[0]
+				if ko, ok2 := artifactSetKoreanNames[sets[0]]; ok2 {
+					setKo = ko
+				}
+				dailyPlan = append(dailyPlan, recommendation{
+					Category: "성유물",
+					Title:    fmt.Sprintf("[%s] %s 성유물 파밍", m.Source, charName),
+					Reason:   fmt.Sprintf("%s 세트 비경", setKo),
+					Resin:    40,
+					Priority: 3,
+				})
+				resinLeft -= 40
+				break
+			}
+		}
+	}
+
+	// 5. No optimization results → prompt to run optimizer
+	if len(uniqueSelected) == 0 {
+		dailyPlan = append(dailyPlan, recommendation{
+			Category: "최적화",
+			Title:    "환상극/나선비경 최적화를 먼저 실행하세요",
+			Reason:   "최적화 결과를 기반으로 구체적인 파밍 계획을 세울 수 있습니다",
+			Resin:    0,
+			Priority: 1,
+		})
+	}
+
+	// 6. Fill remaining with mora ley line
 	if resinLeft > 0 {
 		dailyPlan = append(dailyPlan, recommendation{
-			Category: "경험치",
-			Title:    "지맥 — 경험치/모라",
-			Reason:   fmt.Sprintf("남은 레진 %d 소진", resinLeft),
+			Category: "모라",
+			Title:    "지맥 — 모라",
+			Reason:   fmt.Sprintf("남은 레진 %d 소진 — 육성에 필요한 모라 수급", resinLeft),
 			Resin:    resinLeft,
 			Priority: 4,
 		})
@@ -5255,17 +5381,84 @@ func runTheaterDFS(jobID, uid string) {
 		totalScore += m.Score
 	}
 
+	// Borrow recommendation: find high-tier characters the user doesn't own
+	// that match the required elements
+	ownedNames := map[string]bool{}
+	for _, c := range chars {
+		ownedNames[str(c["name"])] = true
+	}
+
+	type borrowRec struct {
+		Name    string `json:"name"`
+		Element string `json:"element"`
+		Reason  string `json:"reason"`
+	}
+	var borrowRecommendation *borrowRec
+
+	// High-tier characters per element that are commonly borrowed
+	borrowCandidates := []struct{ name, element, reason string }{
+		// 물
+		{"Neuvillette", "물", "최강 물 원소 딜러 — 높은 HP 스케일링"},
+		{"Furina", "물", "범용 서포터 — HP 기반 팀 버프"},
+		{"Yelan", "물", "서브 딜러 — HP 스케일링 + 높은 피해"},
+		{"Mualani", "물", "물 원소 메인 딜러"},
+		// 얼음
+		{"Ayaka", "얼음", "얼음 메인 딜러 — 높은 폭발 피해"},
+		{"Skirk", "얼음", "얼음 메인 딜러 — 0 에너지 빌드"},
+		{"Wriothesley", "얼음", "얼음 근접 딜러"},
+		{"Ganyu", "얼음", "얼음 원거리 딜러"},
+		// 바위
+		{"Navia", "바위", "바위 메인 딜러"},
+		{"Zhongli", "바위", "최강 실드 서포터"},
+		{"Albedo", "바위", "서브 딜러 — 방어력 스케일링"},
+		// 불
+		{"Arlecchino", "불", "불 메인 딜러 — 높은 지속 피해"},
+		{"Mavuika", "불", "불 메인 딜러"},
+		{"Hu Tao", "불", "불 메인 딜러 — HP 스케일링"},
+		// 번개
+		{"Raiden Shogun", "번개", "번개 메인/서브 딜러 + 에너지 서포트"},
+		{"Clorinde", "번개", "번개 메인 딜러"},
+		{"Varesa", "번개", "번개 메인 딜러"},
+		// 바람
+		{"Kaedehara Kazuha", "바람", "최강 바람 서포터 — 원소 마스터리 버프"},
+		{"Venti", "바람", "CC + 에너지 서포트"},
+		{"Xianyun", "바람", "힐러 + 낙하 공격 버프"},
+		// 풀
+		{"Nahida", "풀", "풀 원소 서브 딜러 — 원소 마스터리 공유"},
+		{"Alhaitham", "풀", "풀 메인 딜러"},
+		{"Kinich", "풀", "풀 메인 딜러"},
+	}
+
+	for _, bc := range borrowCandidates {
+		if ownedNames[bc.name] {
+			continue
+		}
+		// Check if this element is needed for theater
+		needed := false
+		for _, el := range requiredElements {
+			if el == bc.element {
+				needed = true
+				break
+			}
+		}
+		if needed {
+			borrowRecommendation = &borrowRec{Name: bc.name, Element: bc.element, Reason: bc.reason}
+			break
+		}
+	}
+
 	resultData := map[string]interface{}{
 		"season": map[string]interface{}{
 			"title":    str(tSeason["title"]),
 			"elements": requiredElements,
 		},
-		"difficulty":      theaterDifficulty,
-		"characters_needed": charsNeeded,
-		"selected_count":  len(members),
-		"members":         members,
-		"total_score":     totalScore,
-		"method":          "dfs_with_pruning",
+		"difficulty":            theaterDifficulty,
+		"characters_needed":     charsNeeded,
+		"selected_count":        len(members),
+		"members":               members,
+		"total_score":           totalScore,
+		"method":                "dfs_with_pruning",
+		"borrow_recommendation": borrowRecommendation,
 	}
 
 	resultJSON, _ := json.Marshal(resultData)

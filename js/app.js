@@ -232,34 +232,76 @@ async function initHome() {
         'smart-discard.html', 'var(--error)')
     }
 
-    // 2. Theater prep
+    // 2. Theater prep — show each item with details inline (priority 1-2 only, skip 3=참고)
     if (planner && planner.theater_prep && planner.theater_prep.length > 0) {
-      const urgent = planner.theater_prep.filter(r => r.priority <= 2)
-      if (urgent.length > 0) {
-        cards += actionCard('theater_comedy', '환상극 준비 필요 (' + urgent.length + '개 항목)',
-          urgent[0].title + (urgent.length > 1 ? ' 외 ' + (urgent.length-1) + '개' : ''),
-          'planner.html', 'var(--tertiary)')
-      }
+      const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+      planner.theater_prep.filter(r => r.priority <= 2).forEach(r => {
+        let detailsHTML = ''
+        if (r.details && r.details.length > 0) {
+          const localizedDetails = r.details.map(d => {
+            if (isKo && typeof charNameEnToKo !== 'undefined') {
+              Object.entries(charNameEnToKo).forEach(([en, ko]) => { d = d.replace(en, ko) })
+            }
+            return d
+          })
+          detailsHTML = '<div style="margin-top:0.375rem">' + localizedDetails.map(d =>
+            `<div style="font-size:0.6875rem;color:var(--on-surface-variant);padding:0.25rem 0 0.25rem 0.5rem;border-left:2px solid var(--outline-variant)">${d}</div>`
+          ).join('') + '</div>'
+        }
+        const prioColors = { 1: 'var(--error)', 2: 'var(--tertiary)', 3: 'var(--on-surface-variant)' }
+        cards += `<div style="padding:1rem;background:var(--surface-container);border-radius:var(--r-xl);border-left:3px solid ${prioColors[r.priority] || 'var(--tertiary)'}">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
+            <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--tertiary)">theater_comedy</span>
+            <span style="font-size:0.875rem;font-weight:700">${r.title}</span>
+            ${r.resin > 0 ? `<span style="font-size:0.75rem;color:var(--primary);font-weight:700;margin-left:auto">${r.resin} 레진</span>` : ''}
+          </div>
+          <div style="font-size:0.75rem;color:var(--on-surface-variant)">${r.reason}</div>
+          ${detailsHTML}
+        </div>`
+      })
     } else if (planner) {
-      cards += actionCard('check_circle', '환상극 준비 완료',
-        '모든 원소 캐릭터가 충분합니다. 최적 조합을 확인하세요.',
-        'planner.html', 'var(--secondary)')
+      cards += `<div style="padding:1rem;background:var(--surface-container);border-radius:var(--r-xl);border-left:3px solid var(--secondary)">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--secondary)">check_circle</span>
+          <span style="font-size:0.875rem;font-weight:700;color:var(--secondary)">환상극 준비 완료</span>
+        </div>
+        <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.25rem">모든 원소 캐릭터가 충분합니다. 아래에서 최적 조합을 확인하세요.</div>
+      </div>`
     }
 
-    // 3. Daily resin
+    // 3. Daily resin — show all items inline
     if (planner && planner.daily_plan && planner.daily_plan.length > 0) {
-      const top = planner.daily_plan[0]
-      cards += actionCard('bolt', '오늘의 레진: ' + top.title,
-        top.reason + (planner.daily_plan.length > 1 ? ' 외 ' + (planner.daily_plan.length-1) + '개 일정' : ''),
-        'planner.html', 'var(--primary)')
+      const isKoHome = (typeof getLang === 'function' && getLang() === 'ko')
+      function localizeText(text) {
+        if (!isKoHome || !text) return text
+        // Weapon names first (longer keys like PrototypeAmber before Amber)
+        if (typeof weaponNameKo !== 'undefined') {
+          Object.entries(weaponNameKo).sort((a, b) => b[0].length - a[0].length).forEach(([en, ko]) => { text = text.replace(en, ko) })
+        }
+        if (typeof charNameEnToKo !== 'undefined') {
+          Object.entries(charNameEnToKo).sort((a, b) => b[0].length - a[0].length).forEach(([en, ko]) => { text = text.replace(en, ko) })
+        }
+        return text
+      }
+      let resinItems = planner.daily_plan.map(p =>
+        `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--outline-variant)">
+          <span style="font-size:0.8125rem;flex:1">${localizeText(p.title)}</span>
+          <span style="font-size:0.6875rem;color:var(--on-surface-variant)">${localizeText(p.reason)}</span>
+          <span style="font-size:0.75rem;font-weight:700;color:var(--primary);white-space:nowrap">${p.resin} 레진</span>
+        </div>`
+      ).join('')
+      const totalResin = planner.daily_plan.reduce((s, p) => s + p.resin, 0)
+      cards += `<div style="padding:1rem;background:var(--surface-container);border-radius:var(--r-xl);border-left:3px solid var(--primary)">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+          <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--primary)">bolt</span>
+          <span style="font-size:0.875rem;font-weight:700">오늘의 레진 계획</span>
+          <span style="font-size:0.75rem;color:var(--primary);font-weight:700;margin-left:auto">${totalResin}/160</span>
+        </div>
+        ${resinItems}
+      </div>`
     }
 
-    // 4. Abyss
-    cards += actionCard('swords', '나선비경 팀 최적화',
-      '보유 캐릭터 기반 12층 클리어 최적 조합을 확인하세요.',
-      'abyss.html', 'var(--hydro)')
-
-    // 5. Summary line
+    // 4. Summary line
     cards += `<div style="font-size:0.75rem;color:var(--on-surface-variant);padding:0.5rem 0">
       캐릭터 ${chars.length}명 · 성유물 ${fmt(artifacts.length)}개 · 무기 ${weapons.length}개 보유 중
     </div>`

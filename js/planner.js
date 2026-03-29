@@ -139,16 +139,29 @@ function renderTheaterPrep(el, recs) {
     return
   }
 
+  const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+  const lName = (n) => (isKo && typeof charNameEnToKo !== 'undefined' && charNameEnToKo[n]) ? charNameEnToKo[n] : n
+
   el.innerHTML = recs.map((r) => {
     const prioColors = { 1: 'var(--error)', 2: 'var(--tertiary)', 3: 'var(--on-surface-variant)' }
     const prioLabels = { 1: '긴급', 2: '권장', 3: '참고' }
-    return `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--surface-highest);border-radius:var(--r-md);margin-bottom:0.5rem;border-left:3px solid ${prioColors[r.priority] || 'var(--outline)'}">
-      <div style="flex-grow:1">
-        <div style="font-size:0.875rem;font-weight:600">${r.title}</div>
-        <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.125rem">${r.reason}</div>
+    const details = (r.details || []).map(d => {
+      // Localize character names in detail strings
+      if (isKo && typeof charNameEnToKo !== 'undefined') {
+        Object.entries(charNameEnToKo).forEach(([en, ko]) => { d = d.replace(en, ko) })
+      }
+      return `<div style="font-size:0.6875rem;color:var(--on-surface-variant);padding-left:0.5rem;border-left:2px solid var(--outline-variant);margin-top:0.25rem">${d}</div>`
+    }).join('')
+    return `<div style="padding:0.75rem;background:var(--surface-highest);border-radius:var(--r-md);margin-bottom:0.5rem;border-left:3px solid ${prioColors[r.priority] || 'var(--outline)'}">
+      <div style="display:flex;align-items:center;gap:1rem">
+        <div style="flex-grow:1">
+          <div style="font-size:0.875rem;font-weight:600">${r.title}</div>
+          <div style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:0.125rem">${r.reason}</div>
+        </div>
+        <span style="font-size:0.625rem;font-weight:700;padding:0.25rem 0.5rem;border-radius:var(--r-full);background:${prioColors[r.priority]};color:var(--on-primary)">${prioLabels[r.priority] || ''}</span>
+        ${r.resin > 0 ? `<span style="font-size:0.75rem;color:var(--primary);font-weight:700">${r.resin} 레진</span>` : ''}
       </div>
-      <span style="font-size:0.625rem;font-weight:700;padding:0.25rem 0.5rem;border-radius:var(--r-full);background:${prioColors[r.priority]};color:var(--on-primary)">${prioLabels[r.priority] || ''}</span>
-      ${r.resin > 0 ? `<span style="font-size:0.75rem;color:var(--primary);font-weight:700">${r.resin} 레진</span>` : ''}
+      ${details}
     </div>`
   }).join('')
 }
@@ -176,6 +189,20 @@ function renderTheaterResult(el, result) {
       <div style="font-size:0.625rem;color:var(--on-surface-variant)">종합 점수</div>
     </div>
   </div>`
+
+  // Borrow recommendation
+  const borrow = result.borrow_recommendation
+  if (borrow) {
+    const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+    const borrowName = (isKo && typeof charNameEnToKo !== 'undefined' && charNameEnToKo[borrow.name]) ? charNameEnToKo[borrow.name] : borrow.name
+    html += `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;margin-bottom:1rem;background:rgba(77,219,206,0.08);border:1px solid rgba(77,219,206,0.2);border-radius:var(--r-md)">
+      <span class="material-symbols-outlined" style="font-size:1.5rem;color:var(--secondary)">person_add</span>
+      <div style="flex:1">
+        <div style="font-size:0.875rem;font-weight:700;color:var(--secondary)">빌려올 추천: ${borrowName}</div>
+        <div style="font-size:0.75rem;color:var(--on-surface-variant)">${borrow.element} 원소 · ${borrow.reason}</div>
+      </div>
+    </div>`
+  }
 
   // Localization helpers (from app.js globals)
   const isKo = (typeof getLang === 'function' && getLang() === 'ko')
@@ -265,14 +292,27 @@ function renderTheaterResult(el, result) {
 
 // --- Daily Plan ---
 function renderDailyPlan(el, plan, total) {
+  const isKo = (typeof getLang === 'function' && getLang() === 'ko')
+  // Localize character/weapon names in title and reason strings
+  function localize(text) {
+    if (!isKo || !text) return text
+    if (typeof weaponNameKo !== 'undefined') {
+      Object.entries(weaponNameKo).sort((a, b) => b[0].length - a[0].length).forEach(([en, ko]) => { text = text.replace(en, ko) })
+    }
+    if (typeof charNameEnToKo !== 'undefined') {
+      Object.entries(charNameEnToKo).sort((a, b) => b[0].length - a[0].length).forEach(([en, ko]) => { text = text.replace(en, ko) })
+    }
+    return text
+  }
+
   let used = 0
   const rows = plan.map((p) => {
     used += p.resin
     return `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--surface-container);border-radius:var(--r-md);margin-bottom:0.5rem">
       <span class="material-symbols-outlined" style="font-size:1.25rem;color:var(--primary)">${getCategoryIcon(p.category)}</span>
       <div style="flex-grow:1">
-        <div style="font-size:0.875rem;font-weight:600">${p.title}</div>
-        <div style="font-size:0.75rem;color:var(--on-surface-variant)">${p.reason}</div>
+        <div style="font-size:0.875rem;font-weight:600">${localize(p.title)}</div>
+        <div style="font-size:0.75rem;color:var(--on-surface-variant)">${localize(p.reason)}</div>
       </div>
       <span style="font-size:0.875rem;font-weight:700;color:var(--primary)">${p.resin}</span>
     </div>`
