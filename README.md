@@ -1,7 +1,14 @@
-# Genshin Dashboard
+# LazyImpact
 
-Genshin Impact 빌드 최적화 및 인벤토리 관리 대시보드.
-Docker Compose로 Go API 서버 + rqlite DB를 실행하고, 바닐라 HTML/CSS/JS 프론트엔드를 제공합니다.
+원신(Genshin Impact) 게으른 유저를 위한 플래너. 데이터를 업로드하면 무엇을 해야 하는지 알려줍니다.
+
+## 핵심 기능
+
+- **스마트 폐기** — 캐릭터별 상대 점수로 불필요한 성유물 자동 분석 (Fribbels 방식)
+- **나선비경 최적화** — gcsim 기반 DPS 시뮬레이션으로 최적 팀 추천
+- **환상극 플래너** — 원소별 로스터 현황, DFS 최적 조합, 빌려올 캐릭터 추천
+- **일일 레진 계획** — 최적화 결과 기반 구체적 파밍 가이드
+- **비회원 모드** — 회원가입 없이 바로 사용 (365일 세션)
 
 ## 실행
 
@@ -17,71 +24,67 @@ docker compose down       # 데이터 유지
 docker compose down -v    # 데이터 초기화
 ```
 
+## 사용 흐름
+
+1. 비회원으로 시작 (또는 회원가입)
+2. [Irminsul](https://github.com/konkers/irminsul) 스캐너로 GOOD 포맷 JSON 내보내기
+3. 홈에서 JSON 업로드 → 자동으로 환상극 + 나선비경 DFS 최적화 실행
+4. 홈의 "오늘 뭐 하지?"에서 할 일 확인
+
 ## 아키텍처
 
 ```
 Docker Compose
 ├── rqlite (:4001)     — 분산 SQLite DB
 └── Go API  (:3000)    — REST API + 정적 파일 서빙
-    ├── /api/register, /api/login, /api/logout, /api/me
-    ├── /api/characters, /api/artifacts, /api/weapons
-    ├── /api/teams, /api/builds
-    └── /api/export, /api/import (GOOD 포맷)
+    ├── 인증: /api/register, /api/login, /api/guest
+    ├── 데이터: /api/characters, /api/artifacts, /api/weapons
+    ├── Import/Export: /api/import, /api/export (GOOD 포맷)
+    ├── 스마트 폐기: /api/artifacts/smart-discard, /api/artifacts/{id}/character-scores
+    ├── 플래너: /api/planner/recommend, /api/theater/seasons
+    ├── 최적화: /api/optimize/start (theater/abyss/all), /api/optimize/status/{id}
+    └── gcsim 내장: DPS 시뮬레이션 (server/gcsim/)
 ```
 
 ## 페이지
 
 | 경로 | 설명 |
 |---|---|
-| `/` | 홈 대시보드 (카운트, Export/Import) |
-| `/characters` | 캐릭터 상세, 스탯, 옵티마이저 컨트롤 |
-| `/artifacts` | 아티팩트 인벤토리, 필터, 추가/삭제 |
-| `/weapons` | 무기 인벤토리 |
-| `/teams` | 팀 구성 |
-| `/builds` | 저장된 빌드 |
-| `/theater` | 환상극 시즌 라인업 (2026년 3~4월) |
-| `/scanner` | Irminsul 스캐너 연동 + GOOD JSON Import |
-| `/login` | 로그인 / 회원가입 |
+| `/` | 홈 — "오늘 뭐 하지?" 액션 가이드 + 레진 계획 |
+| `/smart-discard` | 스마트 폐기 — 캐릭터별 점수, 세트 필터, 제거됨 토글 |
+| `/abyss` | 나선비경 — DFS 팀 최적화 + gcsim DPS 시뮬레이션 |
+| `/planner` | 환상극 — 로스터 현황, 최적 조합, 빌려올 추천 |
+| `/login` | 로그인 / 회원가입 / 비회원 |
 
-## 인증
+## 스마트 폐기 알고리즘
 
-- 비밀번호: bcrypt 해싱
-- 세션: `crypto/rand` 32바이트 토큰, HTTP-only 쿠키 (7일 TTL)
-- 모든 `/api/*` (auth 제외) 인증 필수
+각 성유물을 109명 캐릭터에 대해 개별 점수 산정:
+- 세트 보너스 (0/30) + 메인옵 적합성 (0/30) + 서브옵 가중치 (0-40) - 강화 낭비 감점
+- 모든 캐릭터 중 최고 점수가 기준값 미만이면 폐기 후보
+- 기준값 슬라이더로 조절 가능 (기본 35, 범위 10-100)
 
-## Import / Export
+## gcsim DPS 시뮬레이션
 
-[GOOD (Genshin Open Object Description)](https://github.com/frzyc/genshin-optimizer) 포맷 지원.
-genshin-optimizer 또는 Irminsul 스캐너에서 내보낸 JSON을 그대로 Import 가능.
+[gcsim](https://github.com/genshinsim/gcsim) (MIT 라이선스)을 내재화하여 프레임 단위 몬테카를로 DPS 시뮬레이션 제공:
+- Go 라이브러리로 직접 호출 (외부 의존성 없음)
+- 메타 팀 로테이션 템플릿 8종 (내셔널, 빙결, 하이퍼블룸, 증발, 모노파이로, 감전 등)
+- 유저 실제 캐릭터/무기/성유물 데이터로 시뮬레이션
+- 50회 반복, ~200ms 소요
 
-```bash
-# Export
-curl -b cookie.txt http://localhost:3000/api/export -o data.json
+## 데이터 소스
 
-# Import
-curl -b cookie.txt -X POST http://localhost:3000/api/import \
-  -H 'Content-Type: application/json' -d @data.json
-```
-
-## 에셋
-
-genshin-optimizer 레포에서 가져온 로컬 이미지 643개:
-
-- `assets/chars/` — 캐릭터 아이콘 (123개)
-- `assets/weapons/` — 무기 아이콘 (232개)
-- `assets/artifacts/` — 아티팩트 아이콘 (283개, 59세트)
-- `assets/slots/` — 슬롯 아이콘 (5개)
+- 캐릭터/무기/성유물 한글명: [genshin-optimizer](https://github.com/frzyc/genshin-optimizer) 로컬라이제이션
+- 성유물 썸네일 이미지: genshin-optimizer 에셋 (59세트 × 5슬롯 = 279개)
+- DPS 시뮬레이션: gcsim (MIT, 내재화)
+- GOOD 포맷: [Genshin Open Object Description](https://frzyc.github.io/genshin-optimizer/#/doc)
 
 ## 개발
 
-소스 수정 후 반영 방법:
-
 | 변경 대상 | 반영 방법 |
 |---|---|
-| HTML / CSS / JS | 브라우저 새로고침 |
-| Go 서버 | `docker compose build api && docker compose up -d` |
-| docker-compose.yml | `docker compose down && docker compose up -d` |
-| DB 스키마 | `docker compose down -v && docker compose up -d` |
+| HTML / CSS / JS | 브라우저 새로고침 (`Ctrl+Shift+R`) |
+| Go 서버 | `docker compose up -d --build` |
+| DB 스키마 | `docker compose down -v && docker compose up -d --build` |
 
 ## 테스트
 
@@ -90,12 +93,19 @@ genshin-optimizer 레포에서 가져온 로컬 이미지 643개:
 npx playwright test
 ```
 
-Playwright 56개 테스트: 인증, 네비게이션, API 연동, CRUD, 버튼 클릭.
+382개 Playwright E2E 테스트: 스마트 폐기 시나리오, 인증, API, UI 검증.
 
 ## 기술 스택
 
-- **Frontend**: Vanilla HTML / CSS / JS
-- **Backend**: Go 1.23 (net/http, bcrypt)
+- **Frontend**: Vanilla HTML / CSS / JS (프레임워크 없음)
+- **Backend**: Go 1.26 (net/http, bcrypt)
 - **Database**: rqlite 8.x (분산 SQLite)
+- **DPS Simulation**: gcsim (내재화, MIT)
 - **Test**: Playwright (Chromium)
 - **Infra**: Docker Compose
+- **CI/CD**: GitHub Actions → GHCR (`ghcr.io/agentdawn/lazyimpact`)
+
+## 라이선스
+
+- LazyImpact: MIT
+- gcsim (server/gcsim/): MIT — Copyright (c) 2021 genshinsim
