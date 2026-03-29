@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/genshinsim/gcsim/pkg/simulator"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -4255,6 +4257,360 @@ type dfsArtifact struct {
 	ID       string
 }
 
+// --- gcsim DPS Simulation ---
+
+type teamSlot struct {
+	Role  string
+	Chars []string
+}
+
+type metaTeamTemplate struct {
+	Name     string
+	Slots    []teamSlot
+	Rotation string
+}
+
+var metaTeamTemplates = []metaTeamTemplate{
+	{
+		Name: "라이덴 내셔널",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Raiden Shogun"}},
+			{Role: "서브딜러", Chars: []string{"Xiangling"}},
+			{Role: "서브딜러", Chars: []string{"Xingqiu", "Yelan"}},
+			{Role: "서포터", Chars: []string{"Bennett"}},
+		},
+		Rotation: `active raiden;
+while 1 {
+  raiden skill;
+  %[3]s burst, attack, skill;
+  %[4]s burst, skill;
+  %[2]s burst, skill;
+  raiden burst, attack:5, charge, attack:5, charge, attack:5, charge;
+}`,
+	},
+	{
+		Name: "빙결 (스커크)",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Skirk", "Kamisato Ayaka"}},
+			{Role: "서포터", Chars: []string{"Furina"}},
+			{Role: "서포터", Chars: []string{"Escoffier", "Shenhe", "Diona"}},
+			{Role: "서포터", Chars: []string{"Citlali", "Kaedehara Kazuha"}},
+		},
+		Rotation: `active %[1]s;
+while 1 {
+  %[2]s skill, burst;
+  %[3]s skill, burst;
+  %[4]s skill, burst;
+  %[1]s skill, attack:3, burst, attack:3, dash, attack:3;
+}`,
+	},
+	{
+		Name: "하이퍼블룸",
+		Slots: []teamSlot{
+			{Role: "트리거", Chars: []string{"Raiden Shogun", "Kuki Shinobu"}},
+			{Role: "풀적용", Chars: []string{"Nahida", "Alhaitham"}},
+			{Role: "물적용", Chars: []string{"Xingqiu", "Yelan", "Kokomi"}},
+			{Role: "서포터", Chars: []string{"Furina", "Zhongli", "Bennett"}},
+		},
+		Rotation: `active %[2]s;
+while 1 {
+  %[1]s skill;
+  %[3]s burst, attack, skill;
+  %[4]s skill, burst;
+  %[2]s skill, burst, attack:5, dash, attack:5;
+}`,
+	},
+	{
+		Name: "증발 (호두)",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Hu Tao"}},
+			{Role: "서브딜러", Chars: []string{"Xingqiu", "Yelan"}},
+			{Role: "서포터", Chars: []string{"Furina", "Zhongli"}},
+			{Role: "보조", Chars: []string{"Kaedehara Kazuha", "Yelan", "Xingqiu"}},
+		},
+		Rotation: `active hutao;
+while 1 {
+  %[2]s burst, attack, skill;
+  %[3]s skill, burst;
+  %[4]s skill, burst;
+  hutao skill, attack:2, charge, attack:2, charge, attack:2, charge, attack:2, charge;
+}`,
+	},
+	{
+		Name: "모노 파이로 (아를레키노)",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Arlecchino"}},
+			{Role: "서포터", Chars: []string{"Bennett"}},
+			{Role: "서포터", Chars: []string{"Xilonen", "Kaedehara Kazuha"}},
+			{Role: "서브딜러", Chars: []string{"Xiangling", "Chevreuse"}},
+		},
+		Rotation: `active arlecchino;
+while 1 {
+  %[4]s skill, burst;
+  %[2]s burst, skill;
+  %[3]s skill, burst;
+  arlecchino skill, attack:5, dash, attack:5, dash, attack:5;
+}`,
+	},
+	{
+		Name: "감전 (푸리나)",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Neuvillette", "Mualani"}},
+			{Role: "서포터", Chars: []string{"Furina"}},
+			{Role: "서브딜러", Chars: []string{"Fischl", "Yae Miko", "Raiden Shogun"}},
+			{Role: "서포터", Chars: []string{"Kaedehara Kazuha", "Zhongli", "Bennett"}},
+		},
+		Rotation: `active %[1]s;
+while 1 {
+  %[2]s skill, burst;
+  %[3]s skill;
+  %[4]s skill, burst;
+  %[1]s skill, attack:5, charge, attack:5;
+}`,
+	},
+	{
+		Name: "얼음 DPS (스커크/시틀라리)",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Skirk", "Kamisato Ayaka", "Wriothesley", "Ganyu", "Eula"}},
+			{Role: "서포터", Chars: []string{"Citlali", "Diona", "Layla", "Shenhe"}},
+			{Role: "서포터", Chars: []string{"Bennett", "Furina", "Zhongli", "Kokomi"}},
+			{Role: "서브딜러", Chars: []string{"Fischl", "Xingqiu", "Yelan", "Yae Miko", "Raiden Shogun", "Xiangling"}},
+		},
+		Rotation: `active %[1]s;
+while 1 {
+  %[3]s burst, skill;
+  %[2]s skill, burst;
+  %[4]s skill;
+  %[1]s skill, attack:3, burst, attack:5, dash, attack:3;
+}`,
+	},
+	{
+		Name: "감전/과부하 (바레사)",
+		Slots: []teamSlot{
+			{Role: "메인딜러", Chars: []string{"Varesa", "Clorinde", "Yae Miko", "Keqing"}},
+			{Role: "물적용", Chars: []string{"Furina", "Mualani", "Xingqiu", "Yelan", "Kokomi"}},
+			{Role: "서브딜러", Chars: []string{"Mualani", "Fischl", "Xingqiu", "Yelan", "Nahida"}},
+			{Role: "서포터", Chars: []string{"Chasca", "Kaedehara Kazuha", "Bennett", "Zhongli", "Sucrose"}},
+		},
+		Rotation: `active %[1]s;
+while 1 {
+  %[2]s skill, burst;
+  %[3]s skill;
+  %[4]s skill, burst;
+  %[1]s skill, burst, attack:5, dash, attack:5;
+}`,
+	},
+}
+
+// gcsimCharKey maps display name to gcsim internal character key.
+var gcsimCharKeyMap = map[string]string{
+	"Raiden Shogun":     "raiden",
+	"Hu Tao":            "hutao",
+	"Kamisato Ayaka":    "ayaka",
+	"Kamisato Ayato":    "ayato",
+	"Kaedehara Kazuha":  "kazuha",
+	"Sangonomiya Kokomi": "kokomi",
+	"Kuki Shinobu":      "kuki",
+	"Yae Miko":          "yaemiko",
+	"Shikanoin Heizou":  "heizou",
+	"Arataki Itto":      "itto",
+	"Tartaglia":         "tartaglia",
+	"Neuvillette":       "neuvillette",
+	"Furina":            "furina",
+	"Nahida":            "nahida",
+	"Alhaitham":         "alhaitham",
+	"Xiangling":         "xiangling",
+	"Xingqiu":           "xingqiu",
+	"Bennett":           "bennett",
+	"Yelan":             "yelan",
+	"Zhongli":           "zhongli",
+	"Fischl":            "fischl",
+	"Shenhe":            "shenhe",
+	"Diona":             "diona",
+	"Citlali":           "citlali",
+	"Escoffier":         "escoffier",
+	"Skirk":             "skirk",
+	"Mualani":           "mualani",
+	"Arlecchino":        "arlecchino",
+	"Xilonen":           "xilonen",
+	"Chevreuse":         "chevreuse",
+	"Kokomi":            "kokomi",
+}
+
+func gcsimCharKey(displayName string) string {
+	if k, ok := gcsimCharKeyMap[displayName]; ok {
+		return k
+	}
+	// Fallback: lowercase, remove spaces
+	return strings.ToLower(strings.ReplaceAll(displayName, " ", ""))
+}
+
+// generateGcsimConfig builds a gcsim config string from character data.
+func generateGcsimConfig(team []dfsCharacter, rotation string, iterations int, duration int) string {
+	var buf strings.Builder
+	gcsimKeys := make([]string, 4)
+
+	fmt.Fprintf(&buf, "options iteration=%d duration=%d swap_delay=12 workers=4;\n", iterations, duration)
+	buf.WriteString("target lvl=100 resist=0.1 pos=0,2.4 radius=2;\n\n")
+
+	for i, ch := range team {
+		key := gcsimCharKey(ch.Name)
+		gcsimKeys[i] = key
+
+		level := intVal(ch.Data["level"])
+		if level == 0 {
+			level = 80
+		}
+		ascLevel := level
+		if level >= 80 {
+			ascLevel = 90
+		}
+		cons := intVal(ch.Data["constellation"])
+		fmt.Fprintf(&buf, "%s char lvl=%d/%d cons=%d talent=9,9,9;\n", key, level, ascLevel, cons)
+
+		if ch.WeaponData != nil {
+			weapKey := gcsimWeaponKey(str(ch.WeaponData["name"]))
+			weapLevel := intVal(ch.WeaponData["level"])
+			if weapLevel == 0 {
+				weapLevel = 80
+			}
+			weapAsc := weapLevel
+			if weapLevel >= 80 {
+				weapAsc = 90
+			}
+			refine := intVal(ch.WeaponData["refinement"])
+			if refine == 0 {
+				refine = 1
+			}
+			fmt.Fprintf(&buf, "%s add weapon=\"%s\" refine=%d lvl=%d/%d;\n", key, weapKey, refine, weapLevel, weapAsc)
+		} else {
+			fmt.Fprintf(&buf, "%s add weapon=\"dullblade\" refine=1 lvl=1/20;\n", key)
+		}
+
+		setCounts := map[string]int{}
+		for _, a := range ch.Artifacts {
+			setName := str(a["set_name"])
+			if setName != "" {
+				setCounts[gcsimArtifactKey(setName)]++
+			}
+		}
+		for setKey, count := range setCounts {
+			if count >= 2 {
+				writeCount := 2
+				if count >= 4 {
+					writeCount = 4
+				}
+				fmt.Fprintf(&buf, "%s add set=\"%s\" count=%d;\n", key, setKey, writeCount)
+			}
+		}
+
+		hp := floatVal(ch.Data["hp"])
+		atk := floatVal(ch.Data["atk"])
+		defStat := floatVal(ch.Data["def"])
+		em := floatVal(ch.Data["elemental_mastery"])
+		er := floatVal(ch.Data["energy_recharge"])
+		cr := floatVal(ch.Data["crit_rate"])
+		cd := floatVal(ch.Data["crit_dmg"])
+		fmt.Fprintf(&buf, "%s add stats hp=%.0f atk=%.0f def=%.0f em=%.1f er=%.4f cr=%.4f cd=%.4f;\n\n",
+			key, hp, atk, defStat, em, er/100.0, cr/100.0, cd/100.0)
+	}
+
+	// Rotation
+	filledRotation := fmt.Sprintf(rotation, gcsimKeys[0], gcsimKeys[1], gcsimKeys[2], gcsimKeys[3])
+	buf.WriteString(filledRotation)
+	buf.WriteString("\n")
+
+	return buf.String()
+}
+
+// gcsimWeaponKey converts a weapon display name to gcsim key (lowercase, no spaces).
+func gcsimWeaponKey(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", ""))
+}
+
+// gcsimArtifactKey converts an artifact set display name to gcsim key (lowercase, no spaces).
+func gcsimArtifactKey(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", ""))
+}
+
+// simulateTeamDPS runs a gcsim simulation and returns average DPS.
+func simulateTeamDPS(configStr string) (float64, error) {
+	tmpFile, err := os.CreateTemp("", "gcsim-*.txt")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.WriteString(configStr); err != nil {
+		tmpFile.Close()
+		return 0, fmt.Errorf("failed to write config: %w", err)
+	}
+	tmpFile.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	result, err := simulator.Run(ctx, simulator.Options{
+		ConfigPath: tmpPath,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("gcsim simulation failed: %w", err)
+	}
+
+	if result.Statistics != nil && result.Statistics.DPS != nil && result.Statistics.DPS.Mean != nil {
+		return *result.Statistics.DPS.Mean, nil
+	}
+
+	return 0, fmt.Errorf("no DPS data in simulation result")
+}
+
+// matchMetaTeam checks if a team of characters matches any meta team template.
+// Returns the template and ordered character mapping, or nil if no match.
+func matchMetaTeam(team []dfsCharacter) (*metaTeamTemplate, []dfsCharacter) {
+	for ti := range metaTeamTemplates {
+		tmpl := &metaTeamTemplates[ti]
+		if len(tmpl.Slots) != 4 || len(team) < 4 {
+			continue
+		}
+
+		// Try to assign each team member to a slot
+		used := [4]bool{}
+		slotAssign := make([]dfsCharacter, 4)
+		matched := true
+
+		for si, slot := range tmpl.Slots {
+			found := false
+			for ci, ch := range team {
+				if used[ci] {
+					continue
+				}
+				for _, allowed := range slot.Chars {
+					// Compare without spaces (GOOD key vs display name)
+					if strings.ReplaceAll(ch.Name, " ", "") == strings.ReplaceAll(allowed, " ", "") {
+						slotAssign[si] = ch
+						used[ci] = true
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+			if !found {
+				matched = false
+				break
+			}
+		}
+
+		if matched {
+			return tmpl, slotAssign
+		}
+	}
+	return nil, nil
+}
+
 // --- Abyss DFS ---
 
 func runAbyssDFS(jobID, uid string) {
@@ -4326,12 +4682,38 @@ func runAbyssDFS(jobID, uid string) {
 		}
 	}
 
+	// Parse season blessing to extract bonus elements for each half
+	// Format: "심연의 축복: 전반 — 바람 피해 증가 / 후반 — 얼음 일반공격 피해 증가"
+	blessingStr := str(season["blessing"])
+	blessingFirstElement := ""
+	blessingSecondElement := ""
+	if parts := strings.Split(blessingStr, "/"); len(parts) == 2 {
+		// Extract element from first half (전반 — X 피해...)
+		firstPart := strings.TrimSpace(parts[0])
+		if idx := strings.Index(firstPart, "— "); idx >= 0 {
+			after := firstPart[idx+len("— "):]
+			fields := strings.Fields(after)
+			if len(fields) > 0 {
+				blessingFirstElement = fields[0]
+			}
+		}
+		// Extract element from second half (후반 — X ...)
+		secondPart := strings.TrimSpace(parts[1])
+		if idx := strings.Index(secondPart, "— "); idx >= 0 {
+			after := secondPart[idx+len("— "):]
+			fields := strings.Fields(after)
+			if len(fields) > 0 {
+				blessingSecondElement = fields[0]
+			}
+		}
+	}
+
 	// Score each character
 	scored := scoreDFSCharacters(chars, weaps, arts)
 
 	// scoreForHalf computes a context-aware score for a character in a specific half.
-	// contextScore = baseScore * resMod + elementMatchBonus + enemyWeaknessBonus + healerBonus
-	scoreForHalf := func(charIdx int, recElements map[string]bool, enemies []string, needsHealer bool) float64 {
+	// contextScore = baseScore * resMod + elementMatchBonus + enemyWeaknessBonus + healerBonus + blessingBonus
+	scoreForHalf := func(charIdx int, recElements map[string]bool, enemies []string, needsHealer bool, blessingElement string) float64 {
 		sc := scored[charIdx]
 		baseScore := sc.Score
 		charElement := elementToResKey(sc.Element)
@@ -4376,6 +4758,11 @@ func runAbyssDFS(jobID, uid string) {
 			contextScore += 2500.0
 		}
 
+		// Season blessing bonus: +5000 if character's element matches the blessing element for this half
+		if blessingElement != "" && elementsMatch(sc.Element, blessingElement) {
+			contextScore += 5000.0
+		}
+
 		return contextScore
 	}
 
@@ -4410,7 +4797,7 @@ func runAbyssDFS(jobID, uid string) {
 	var bestSecond []int
 
 	// Precompute sorted scores for upper bound calculation (use max possible context score)
-	maxContextBonus := 3000.0 + 2000.0 + 2500.0 + 2500.0 + 3000.0 // elementMatch + enemyWeakness + healer + resonance + moonlight
+	maxContextBonus := 3000.0 + 2000.0 + 2500.0 + 5000.0 + 2500.0 + 3000.0 // elementMatch + enemyWeakness + healer + blessing + resonance + moonlight
 	allScores := make([]float64, n)
 	for i, sc := range scored {
 		allScores[i] = sc.Score + maxContextBonus
@@ -4460,8 +4847,8 @@ func runAbyssDFS(jobID, uid string) {
 
 			// Pick top 4 from remaining for second half (using context-aware scoring)
 			sort.Slice(remaining, func(a, b int) bool {
-				sa := scoreForHalf(remaining[a], secondHalfElements, secondHalfEnemies, secondHalfNeedsHealer)
-				sb := scoreForHalf(remaining[b], secondHalfElements, secondHalfEnemies, secondHalfNeedsHealer)
+				sa := scoreForHalf(remaining[a], secondHalfElements, secondHalfEnemies, secondHalfNeedsHealer, blessingSecondElement)
+				sb := scoreForHalf(remaining[b], secondHalfElements, secondHalfEnemies, secondHalfNeedsHealer, blessingSecondElement)
 				return sa > sb
 			})
 			secondPick := remaining
@@ -4471,7 +4858,7 @@ func runAbyssDFS(jobID, uid string) {
 
 			secondScore := 0.0
 			for _, idx := range secondPick {
-				secondScore += scoreForHalf(idx, secondHalfElements, secondHalfEnemies, secondHalfNeedsHealer)
+				secondScore += scoreForHalf(idx, secondHalfElements, secondHalfEnemies, secondHalfNeedsHealer, blessingSecondElement)
 			}
 
 			// Resonance and moonlight bonuses for first half
@@ -4515,7 +4902,7 @@ func runAbyssDFS(jobID, uid string) {
 		}
 
 		for i := start; i < n; i++ {
-			charScore := scoreForHalf(i, firstHalfElements, firstHalfEnemies, firstHalfNeedsHealer)
+			charScore := scoreForHalf(i, firstHalfElements, firstHalfEnemies, firstHalfNeedsHealer, blessingFirstElement)
 			newScore := currentScore + charScore
 
 			// Pruning: estimate upper bound for remaining picks
@@ -4868,6 +5255,8 @@ func finishAbyssDFS(jobID, uid string, firstTeam, secondTeam []dfsCharacter,
 		ElementCoverage []string         `json:"element_coverage"`
 		Resonance       string           `json:"resonance"`
 		Moonlight       string           `json:"moonlight,omitempty"`
+		SimDPS          float64          `json:"sim_dps,omitempty"`
+		MetaTeam        string           `json:"meta_team,omitempty"`
 	}
 
 	buildResp := func(team []dfsCharacter, recElements map[string]bool, artResults []memberArtResult) teamResponse {
@@ -4951,13 +5340,36 @@ func finishAbyssDFS(jobID, uid string, firstTeam, secondTeam []dfsCharacter,
 			teamScore += moonScore
 		}
 
-		return teamResponse{
+		resp := teamResponse{
 			Members:         members,
 			TeamScore:       teamScore,
 			ElementCoverage: elements,
 			Resonance:       resonance,
 			Moonlight:       moonlight,
 		}
+
+		// gcsim DPS simulation: try matching a meta team template
+		gcsimTeamNames := make([]string, len(team))
+		for i, ch := range team {
+			gcsimTeamNames[i] = ch.Name
+		}
+		log.Printf("Trying gcsim match for team: %v", gcsimTeamNames)
+		if tmpl, orderedTeam := matchMetaTeam(team); tmpl != nil {
+			log.Printf("Matched meta team: %s", tmpl.Name)
+			cfg := generateGcsimConfig(orderedTeam, tmpl.Rotation, 50, 30)
+			if dps, err := simulateTeamDPS(cfg); err == nil && dps > 0 {
+				log.Printf("gcsim DPS for %s: %.0f", tmpl.Name, dps)
+				resp.SimDPS = dps
+				resp.MetaTeam = tmpl.Name
+				resp.TeamScore = dps / 10.0
+			} else {
+				log.Printf("gcsim simulation failed for %s: %v", tmpl.Name, err)
+			}
+		} else {
+			log.Printf("No meta team match for: %v", teamNames)
+		}
+
+		return resp
 	}
 
 	firstArtResults := memberArtResults[:len(firstTeam)]
@@ -5141,31 +5553,58 @@ func runTheaterDFS(jobID, uid string) {
 		return theaterChars[i].TotalScore > theaterChars[j].TotalScore
 	})
 
-	// Select best characters per element, then fill remaining
+	// Select best characters with even element distribution across required elements
 	selected := []dfsCharacter{}
 	usedIdx := map[int]bool{}
 
-	// First pass: pick characters matching required elements
-	for _, el := range requiredElements {
-		el = strings.TrimSpace(el)
-		count := 0
-		perElementTarget := charsNeeded / len(requiredElements)
-		if perElementTarget < 1 {
-			perElementTarget = 1
-		}
-		for i, tc := range theaterChars {
-			if usedIdx[i] || count >= perElementTarget {
-				continue
-			}
-			if elementsMatch(tc.Char.Element, el) {
-				selected = append(selected, tc.Char)
-				usedIdx[i] = true
-				count++
-			}
+	// Calculate per-element targets with ceiling division for even distribution
+	numElements := len(requiredElements)
+	if numElements == 0 {
+		numElements = 1
+	}
+	baseTarget := charsNeeded / numElements
+	remainder := charsNeeded % numElements
+	// elementTargets[i] = baseTarget + 1 for the first 'remainder' elements, baseTarget for the rest
+	elementTargets := make([]int, numElements)
+	for i := range elementTargets {
+		elementTargets[i] = baseTarget
+		if i < remainder {
+			elementTargets[i]++
 		}
 	}
 
-	// Second pass: fill remaining slots with highest scoring characters
+	// First pass: fill each element's quota round-robin to ensure even distribution
+	elementCounts := make([]int, numElements)
+	for round := 0; round < charsNeeded; round++ {
+		picked := false
+		for ei, el := range requiredElements {
+			el = strings.TrimSpace(el)
+			if elementCounts[ei] >= elementTargets[ei] {
+				continue
+			}
+			// Find best unused character matching this element
+			for i, tc := range theaterChars {
+				if usedIdx[i] {
+					continue
+				}
+				if elementsMatch(tc.Char.Element, el) {
+					selected = append(selected, tc.Char)
+					usedIdx[i] = true
+					elementCounts[ei]++
+					picked = true
+					break
+				}
+			}
+		}
+		if !picked {
+			break
+		}
+		if len(selected) >= charsNeeded {
+			break
+		}
+	}
+
+	// Second pass: fill remaining slots with highest scoring characters (any element)
 	for i, tc := range theaterChars {
 		if len(selected) >= charsNeeded {
 			break
@@ -5422,19 +5861,37 @@ func runTheaterDFS(jobID, uid string) {
 		{"Kinich", "풀", "풀 메인 딜러"},
 	}
 
+	// Find which required element the user is weakest in (fewest high-level characters among selected)
+	elementHighLevelCount := map[string]int{}
+	for _, el := range requiredElements {
+		el = strings.TrimSpace(el)
+		elementHighLevelCount[el] = 0
+	}
+	for _, m := range selected {
+		for _, el := range requiredElements {
+			el = strings.TrimSpace(el)
+			if elementsMatch(m.Element, el) && intVal(m.Data["level"]) >= 80 {
+				elementHighLevelCount[el]++
+			}
+		}
+	}
+	// Find weakest element
+	weakestElement := ""
+	weakestCount := math.MaxInt32
+	for _, el := range requiredElements {
+		el = strings.TrimSpace(el)
+		if cnt := elementHighLevelCount[el]; cnt < weakestCount {
+			weakestCount = cnt
+			weakestElement = el
+		}
+	}
+
 	for _, bc := range borrowCandidates {
 		if ownedNames[bc.name] {
 			continue
 		}
-		// Check if this element is needed for theater
-		needed := false
-		for _, el := range requiredElements {
-			if el == bc.element {
-				needed = true
-				break
-			}
-		}
-		if needed {
+		// Recommend for the weakest element
+		if bc.element == weakestElement || elementsMatch(bc.element, weakestElement) {
 			borrowRecommendation = &borrowRec{Name: bc.name, Element: bc.element, Reason: bc.reason}
 			break
 		}
