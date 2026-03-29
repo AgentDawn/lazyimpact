@@ -322,21 +322,64 @@ async function initHome() {
 }
 
 async function autoOptimizeAfterImport() {
-  showToast('환상극 + 나선비경 최적화를 자동 실행합니다...')
+  // Save gender preference if set
+  const genderSelect = document.getElementById('home-pref-gender')
+  if (genderSelect && genderSelect.value !== 'all') {
+    await fetch('/api/me/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefer_gender: genderSelect.value }),
+    }).catch(() => {})
+  }
+
+  // Show progress overlay
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:var(--font,sans-serif)'
+  overlay.innerHTML = `
+    <div style="width:3rem;height:3rem;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:1.5rem"></div>
+    <h2 id="opt-status" style="font-size:1.25rem;font-weight:700;margin:0">최적화 실행 중...</h2>
+    <p id="opt-detail" style="color:rgba(255,255,255,0.6);margin-top:0.5rem;font-size:0.875rem">환상극 + 나선비경 팀을 분석하고 있습니다</p>
+    <div style="width:16rem;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;margin-top:1.5rem;overflow:hidden">
+      <div id="opt-bar" style="width:0%;height:100%;background:linear-gradient(90deg,var(--primary,#afc6ff),var(--secondary,#4ddbce));border-radius:3px;transition:width 0.5s"></div>
+    </div>
+    <span id="opt-pct" style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:0.5rem">0%</span>
+  `
+  document.body.appendChild(overlay)
+  const statusEl = overlay.querySelector('#opt-status')
+  const detailEl = overlay.querySelector('#opt-detail')
+  const barEl = overlay.querySelector('#opt-bar')
+  const pctEl = overlay.querySelector('#opt-pct')
+
   try {
     const res = await fetch('/api/optimize/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'all'}) })
     if (res.ok) {
       const { job_id } = await res.json()
-      // Poll until done (max 60s)
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 2000))
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 1000))
         try {
           const status = await (await fetch(`/api/optimize/status/${job_id}`)).json()
-          if (status.status === 'done' || status.status === 'error') break
+          const pct = status.progress || 0
+          barEl.style.width = pct + '%'
+          pctEl.textContent = pct + '%'
+          if (pct < 50) {
+            detailEl.textContent = '환상극 팀을 분석하고 있습니다'
+          } else {
+            detailEl.textContent = '나선비경 팀을 분석하고 있습니다'
+          }
+          if (status.status === 'done') {
+            statusEl.textContent = '최적화 완료!'
+            detailEl.textContent = '잠시 후 결과를 표시합니다'
+            barEl.style.width = '100%'
+            pctEl.textContent = '100%'
+            await new Promise(r => setTimeout(r, 1000))
+            break
+          }
+          if (status.status === 'error') break
         } catch { break }
       }
     }
   } catch {}
+  document.body.removeChild(overlay)
 }
 
 function actionCard(icon, title, desc, href, color) {

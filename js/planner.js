@@ -269,13 +269,16 @@ function renderTheaterResult(el, result) {
 
     html += `<div style="background:var(--surface-container);border-radius:var(--r-xl);overflow:hidden;border-top:3px solid ${borderColor}">
       <div style="padding:0.875rem">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-          <div style="display:flex;align-items:center;gap:0.5rem">
-            ${charElement ? `<span style="font-size:0.625rem;font-weight:700;padding:0.125rem 0.375rem;border-radius:var(--r-sm);background:${borderColor};color:var(--surface)">${charElement}</span>` : ''}
-            <span style="font-size:0.875rem;font-weight:700">${charName}</span>
-            <span style="font-size:0.6875rem;color:var(--on-surface-variant)">Lv.${charLevel}</span>
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
+          <img src="assets/chars/${(char.name||'').replace(/\s+/g,'')}.png" alt="${charName}" onerror="this.style.display='none'" style="width:2.5rem;height:2.5rem;border-radius:50%;object-fit:cover;background:var(--surface-low);flex-shrink:0;border:2px solid ${borderColor}"/>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:0.375rem">
+              ${charElement ? `<span style="font-size:0.5625rem;font-weight:700;padding:0.0625rem 0.3rem;border-radius:var(--r-sm);background:${borderColor};color:var(--surface)">${charElement}</span>` : ''}
+              <span style="font-size:0.875rem;font-weight:700">${charName}</span>
+              <span style="font-size:0.6875rem;color:var(--on-surface-variant)">Lv.${charLevel}</span>
+            </div>
           </div>
-          <span style="font-size:0.875rem;font-weight:800;color:var(--primary)">${score.toLocaleString()}</span>
+          <span style="font-size:0.875rem;font-weight:800;color:var(--primary);flex-shrink:0">${score.toLocaleString()}</span>
         </div>
         ${weapon.name ? `<div style="font-size:0.6875rem;color:var(--on-surface-variant);margin-bottom:0.5rem">무기: ${lWeapon(weapon.name)} Lv.${weapon.level || 0}</div>` : ''}
         <div style="display:flex;gap:0.25rem;margin-bottom:0.5rem">${artThumbHTML}</div>

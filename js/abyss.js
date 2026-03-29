@@ -125,11 +125,29 @@ function renderSeasonInfo(el, season) {
 }
 
 function renderTeamHalf(el, half) {
-  const chars = half.characters || []
-  if (chars.length === 0) {
+  const rawChars = half.members || half.characters || []
+  if (rawChars.length === 0) {
     el.innerHTML = emptyState('group_off', '팀 구성을 위한 캐릭터가 부족합니다.')
     return
   }
+
+  // Normalize DFS member format to flat format for renderCharCard
+  const chars = rawChars.map(c => {
+    if (c.character) {
+      // DFS format: { character: {name, element, level, ...}, score, weapon: {name, ...}, artifacts, improvements }
+      return {
+        name: c.character.name || '',
+        element: c.character.element || '',
+        level: c.character.level || 0,
+        weapon: c.weapon ? c.weapon.name || '' : '',
+        weapon_level: c.weapon ? c.weapon.level || 0 : 0,
+        score: c.score,
+        artifacts: (c.artifacts || []).map(a => ({ slot: a.slot, set: a.set_name, level: a.level })),
+        improvements: (c.improvements || []).map(imp => typeof imp === 'string' ? { label: imp, priority: 'medium' } : imp),
+      }
+    }
+    return c // already flat (greedy format)
+  })
 
   const cardsHtml = chars.map((c) => renderCharCard(c)).join('')
 
