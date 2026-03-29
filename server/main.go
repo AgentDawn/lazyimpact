@@ -574,21 +574,14 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 const guestSessionTTL = 365 * 24 * time.Hour // 1 year
 
 func handleGuest(w http.ResponseWriter, r *http.Request) {
-	// Generate random guest username
+	// Generate random guest username — no password needed, session cookie is auth
 	b := make([]byte, 8)
 	rand.Read(b)
 	username := "guest_" + hex.EncodeToString(b)
-	password := hex.EncodeToString(b) + "_guest"
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		http.Error(w, `{"error":"internal error"}`, 500)
-		return
-	}
-
-	_, err = rqliteExec([]string{fmt.Sprintf(
-		"INSERT INTO users (username, password_hash) VALUES ('%s', '%s')",
-		esc(username), esc(string(hash)),
+	_, err := rqliteExec([]string{fmt.Sprintf(
+		"INSERT INTO users (username, password_hash) VALUES ('%s', '')",
+		esc(username),
 	)})
 	if err != nil {
 		http.Error(w, `{"error":"failed to create guest"}`, 500)

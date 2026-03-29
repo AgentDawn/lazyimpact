@@ -19,8 +19,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderRoster(rosterEl, plannerData.roster_status || {}, plannerData.characters_needed || 0, plannerData.difficulty || 'transcendence')
     renderTheaterPrep(prepEl, plannerData.theater_prep || [])
-    renderDailyPlan(dailyEl, plannerData.daily_plan || [], plannerData.resin_total || 160)
-    renderBP(bpEl, plannerData.bp_missions || [])
+    if (dailyEl) renderDailyPlan(dailyEl, plannerData.daily_plan || [], plannerData.resin_total || 160)
+    if (bpEl) renderBP(bpEl, plannerData.bp_missions || [])
 
     const resinDisplay = document.getElementById('resin-display')
     if (resinDisplay) resinDisplay.textContent = `${plannerData.resin_total || 160}/${plannerData.resin_total || 160}`
@@ -42,14 +42,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  // Load last theater optimization result
+  // Load last theater optimization result — hide prep section if DFS exists
   const resultEl = document.getElementById('theater-optimize-result')
+  const prepSection = document.getElementById('theater-prep')
   try {
     const latestRes = await fetch('/api/optimize/latest/theater')
     if (latestRes.ok) {
       const latestData = await latestRes.json()
       if (latestData && latestData.members && latestData.members.length > 0) {
         renderTheaterResult(resultEl, latestData)
+        // Hide prep section + optimize button since DFS result exists
+        if (prepSection) prepSection.style.display = 'none'
       }
     }
   } catch {}
