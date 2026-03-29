@@ -88,11 +88,8 @@ test.describe('Home page - API integration', () => {
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Home page now shows action cards / shortcuts instead of character avatars
-    // Wait for the shortcuts section to render
-    await page.waitForSelector('#home-shortcuts a', { timeout: 10000 });
-    const shortcuts = page.locator('#home-shortcuts a');
-    const count = await shortcuts.count();
-    expect(count).toBeGreaterThanOrEqual(1);
+    // Home page now shows action cards section after data import
+    await page.waitForSelector('#home-actions', { timeout: 10000 });
+    await expect(page.locator('#home-actions')).toBeVisible();
   });
 });

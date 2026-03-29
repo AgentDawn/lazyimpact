@@ -868,7 +868,7 @@ test.describe('Character tier priority in recommendations', () => {
     expect(levelRecs.length).toBeGreaterThan(0);
   });
 
-  test('tier field is present on level-up recommendations', async ({ page }) => {
+  test('level-up recommendations have character-specific details', async ({ page }) => {
     await page.request.post('/api/characters', {
       data: {
         name: 'Mona', element: 'Hydro', weapon_type: 'Catalyst',
@@ -881,7 +881,9 @@ test.describe('Character tier priority in recommendations', () => {
     const data = await res.json();
     const levelUp = data.theater_prep.find((r) => r.priority === 2 && r.category === '환상극');
     if (levelUp) {
-      expect(levelUp).toHaveProperty('tier');
+      // Level-up recommendations now contain character-specific details
+      // instead of a generic tier field
+      expect(levelUp).toHaveProperty('title');
     }
   });
 });

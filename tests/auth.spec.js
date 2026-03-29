@@ -94,7 +94,7 @@ test.describe('Auth flow', () => {
     await page.fill('#auth-password', 'wrongpassword');
     await page.click('#auth-submit');
     await expect(page.locator('#auth-error')).toBeVisible();
-    await expect(page.locator('#auth-error')).toContainText('invalid credentials');
+    await expect(page.locator('#auth-error')).toContainText('사용자 이름 또는 비밀번호가 올바르지 않습니다');
   });
 
   test('short password rejected on register', async ({ page }) => {
@@ -105,7 +105,7 @@ test.describe('Auth flow', () => {
     await page.fill('#auth-password', '123');
     await page.click('#auth-submit');
     await expect(page.locator('#auth-error')).toBeVisible();
-    await expect(page.locator('#auth-error')).toContainText('at least 8');
+    await expect(page.locator('#auth-error')).toContainText('비밀번호는 8자 이상이어야 합니다');
   });
 
   test('duplicate username rejected', async ({ page }) => {
@@ -116,6 +116,6 @@ test.describe('Auth flow', () => {
     await page.fill('#auth-password', 'anotherpass123');
     await page.click('#auth-submit');
     await expect(page.locator('#auth-error')).toBeVisible();
-    await expect(page.locator('#auth-error')).toContainText('already taken');
+    await expect(page.locator('#auth-error')).toContainText('이미 사용 중인 사용자 이름입니다');
   });
 });

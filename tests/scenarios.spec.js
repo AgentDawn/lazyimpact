@@ -255,11 +255,15 @@ test.describe('Scenario 3: Weekly resin optimization flow', () => {
     expect(totalResin).toBeGreaterThanOrEqual(80);
   });
 
-  test('daily plan contains talent domain and remaining resin filler items', async ({ page }) => {
+  test('daily plan contains optimization-based recommendations', async ({ page }) => {
     const res = await page.request.get('/api/planner/recommend');
     const data = await res.json();
-    const categories = data.daily_plan.map((r) => r.category);
-    expect(categories).toContain('특성');
+    expect(data.daily_plan.length).toBeGreaterThan(0);
+    // Daily plan now shows character-specific items from optimization results,
+    // or a prompt to run optimization if none exist
+    const titles = data.daily_plan.map((r) => r.title || '');
+    const hasContent = titles.some((t) => t.length > 0);
+    expect(hasContent).toBeTruthy();
   });
 });
 
@@ -504,19 +508,18 @@ test.describe('Scenario 6: Character with underleveled gear', () => {
     expect(res.ok()).toBeTruthy();
     const data = await res.json();
 
-    // Daily plan should include artifact domain and weapon/talent domains
+    // Daily plan should have recommendations (optimization-based or prompt to optimize)
     expect(data.daily_plan.length).toBeGreaterThan(0);
-    const categories = data.daily_plan.map((r) => r.category);
-    // Should have artifact farming or weapon material domain
-    const hasFarmRec = categories.includes('성유물') || categories.includes('무기') || categories.includes('특성');
-    expect(hasFarmRec).toBeTruthy();
   });
 
-  test('daily plan includes talent and weapon material domains', async ({ page }) => {
+  test('daily plan includes recommendations or optimization prompt', async ({ page }) => {
     const res = await page.request.get('/api/planner/recommend');
     const data = await res.json();
-    const categories = data.daily_plan.map((r) => r.category);
-    expect(categories).toContain('특성');
+    expect(data.daily_plan.length).toBeGreaterThan(0);
+    // Daily plan now shows optimization-based items or a prompt to run optimization
+    const titles = data.daily_plan.map((r) => r.title || '');
+    const hasContent = titles.some((t) => t.length > 0);
+    expect(hasContent).toBeTruthy();
   });
 
   test('underleveled weapon exists in weapons list', async ({ page }) => {

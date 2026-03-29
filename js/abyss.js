@@ -10,10 +10,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const recsEl = document.getElementById('abyss-recommendations')
   if (!seasonEl) return
 
-  await loadCharNameMap()
-
-  // Load greedy result on page load
-  await loadAbyssGreedy()
+  // Load latest DFS result
+  try {
+    const latestRes = await fetch('/api/optimize/latest/abyss')
+    if (latestRes.ok) {
+      const latestData = await latestRes.json()
+      if (latestData && (latestData.teams || latestData.first_half)) {
+        const teams = latestData.teams || {}
+        renderAbyssData({
+          season: latestData.season || {},
+          first_half: teams.first_half || latestData.first_half || {},
+          second_half: teams.second_half || latestData.second_half || {},
+          overall: latestData.overall || { score: latestData.overall_score || 0 },
+          recommendations: latestData.recommendations || [],
+        })
+      } else {
+        const msg = emptyState('sync', '데이터를 가져온 후 홈에서 최적화가 자동 실행됩니다.')
+        seasonEl.innerHTML = msg
+        firstEl.innerHTML = ''
+        secondEl.innerHTML = ''
+      }
+    }
+  } catch {
+    seasonEl.innerHTML = emptyState('error', '결과를 불러올 수 없습니다.')
+  }
 
   // Wire up DFS button
   const btnDfs = document.getElementById('btn-dfs-optimize')
@@ -42,30 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderGapAnalysis(resultEl, data)
     } catch (e) {
       resultEl.innerHTML = emptyState('error', '갭 분석을 불러올 수 없습니다.')
-    }
-  }
-
-  async function loadAbyssGreedy() {
-    try {
-      const res = await fetch('/api/abyss/optimize')
-      if (res.status === 401) { window.location.href = '/login.html'; return }
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.error || 'not_enough')
-      }
-      const data = await res.json()
-      renderAbyssData(data)
-    } catch (e) {
-      const msg = e.message === 'not_enough'
-        ? '나선비경 최적화를 위해 더 많은 캐릭터가 필요합니다. 캐릭터를 추가해 주세요.'
-        : '데이터를 불러올 수 없습니다.'
-      const icon = e.message === 'not_enough' ? 'person_add' : 'error'
-      const emptyHtml = emptyState(icon, msg)
-      seasonEl.innerHTML = emptyHtml
-      firstEl.innerHTML = emptyHtml
-      secondEl.innerHTML = emptyHtml
-      overallEl.innerHTML = emptyHtml
-      recsEl.innerHTML = emptyHtml
     }
   }
 
