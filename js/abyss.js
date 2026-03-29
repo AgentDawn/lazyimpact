@@ -166,10 +166,11 @@ function renderTeamHalf(el, half) {
        </div>`
     : ''
 
-  const teamScore = half.team_score != null
-    ? `<div style="display:flex;align-items:center;gap:0.75rem">
-        <span style="font-size:0.8125rem;color:var(--on-surface-variant)">팀 점수</span>
-        <span style="font-size:1.125rem;font-weight:700;color:var(--primary)">${half.team_score}</span>
+  const simDpsHtml = half.sim_dps
+    ? `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;background:rgba(175,198,255,0.08);border:1px solid rgba(175,198,255,0.2);border-radius:var(--r-md)">
+        <span class="material-symbols-outlined" style="font-size:1rem;color:var(--primary)">speed</span>
+        <span style="font-size:0.8125rem;font-weight:700;color:var(--primary)">${Math.round(half.sim_dps).toLocaleString()} DPS</span>
+        ${half.meta_team ? `<span style="font-size:0.6875rem;color:var(--on-surface-variant);margin-left:0.25rem">${half.meta_team}</span>` : ''}
        </div>`
     : ''
 
@@ -178,7 +179,7 @@ function renderTeamHalf(el, half) {
       ${cardsHtml}
     </div>
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding-top:0.75rem;border-top:1px solid var(--outline-variant)">
-      ${teamScore}
+      ${simDpsHtml}
       ${resonanceHtml}
       ${elemCoverageHtml}
     </div>`
