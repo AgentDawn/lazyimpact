@@ -379,11 +379,11 @@ func seedWeeklyBosses() {
 
 func seedAbyss() {
 	log.Println("Seeding abyss seasons...")
-	floor12 := `{"chambers":[{"chamber":1,"first_half":{"enemies":["보스A","엘리트B"],"elements":["불","번개"]},"second_half":{"enemies":["보스C","엘리트D"],"elements":["물","얼음"]}},{"chamber":2,"first_half":{"enemies":["보스E"],"elements":["바람","불"]},"second_half":{"enemies":["보스F"],"elements":["바위","풀"]}},{"chamber":3,"first_half":{"enemies":["보스G"],"elements":["번개","물"]},"second_half":{"enemies":["보스H"],"elements":["얼음","불"]}}]}`
+	floor12 := `{"chambers":[{"chamber":1,"first_half":{"enemies":["영구 장치 진영"],"elements":["바람"]},"second_half":{"enemies":["달빛 환영 나비"],"elements":["얼음"]}},{"chamber":2,"first_half":{"enemies":["산왕"],"elements":["바람"]},"second_half":{"enemies":["힐예타"],"elements":["얼음"]}},{"chamber":3,"first_half":{"enemies":["노련한 달빛 서리 늑대"],"elements":["바람"]},"second_half":{"enemies":["비밀근원 기계·통솔기"],"elements":["얼음"]}}]}`
 	rqliteExec([]string{fmt.Sprintf(
 		"INSERT INTO abyss_seasons (period, blessing, floor12_data) VALUES ('%s', '%s', '%s')",
-		esc("2026년 3월 하반기"),
-		esc("심연의 축복: 전투 시작 후 원소 폭발을 발동하면 모든 파티원의 원소 마스터리가 60 증가"),
+		esc("6.4 중반 (2026.3.16 ~ 2026.4.15)"),
+		esc("심연의 축복: 전반 — 바람 피해 증가 / 후반 — 얼음 일반공격 피해 증가"),
 		esc(floor12),
 	)})
 }
